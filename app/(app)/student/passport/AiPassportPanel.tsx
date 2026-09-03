@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { str, list, num, obj, FallbackNote, AiPending } from "../_ai";
+import { str, list, num, obj, rows, FallbackNote, AiPending } from "../_ai";
+
+type ProgressionNote = { skill: string; from?: string; to?: string; comment?: string };
 
 type Passport = {
   narrative?: string;
+  progression: ProgressionNote[];
   highlights: string[];
   readinessScore?: number;
   readinessLevel?: string;
@@ -18,6 +21,14 @@ function normalize(data: unknown): Passport {
   const jr = obj(d.jobReadiness ?? d.job_readiness ?? d.readiness);
   return {
     narrative: str(d.narrative ?? d.summary ?? d.profile ?? d.overview),
+    progression: rows(d.progression ?? d.skillProgression ?? d.skill_progression)
+      .map((r) => ({
+        skill: str(r.skill ?? r.name) ?? "",
+        from: str(r.from ?? r.fromLevel ?? r.firstLevel),
+        to: str(r.to ?? r.toLevel ?? r.currentLevel),
+        comment: str(r.comment ?? r.note ?? r.detail ?? r.why),
+      }))
+      .filter((r) => r.skill),
     highlights: list(d.highlights ?? d.strengths ?? d.standouts),
     readinessScore: num(jr.score ?? jr.readinessScore ?? d.readinessScore),
     readinessLevel: str(jr.level ?? jr.verdict ?? jr.status ?? d.readinessLevel),
@@ -75,6 +86,34 @@ export default function AiPassportPanel() {
               ))}
             </ul>
           )}
+        </section>
+      )}
+
+      {p.progression.length > 0 && (
+        <section>
+          <div className="stat">On the progression above</div>
+          <ul className="mt-3 space-y-px">
+            {p.progression.map((r, i) => (
+              <li
+                key={`${r.skill}-${i}`}
+                className="grid gap-x-6 gap-y-1 border-t border-hairline py-3 first:border-t-0 sm:grid-cols-[11rem_1fr] sm:items-baseline"
+              >
+                <div className="min-w-0">
+                  <span className="text-[0.95rem] text-ink">{r.skill}</span>
+                  {(r.from || r.to) && (
+                    <p className="mono mt-1 text-[0.7rem] text-ink-3">
+                      {r.from ?? "—"}
+                      <span aria-hidden className="mx-1.5">
+                        &rarr;
+                      </span>
+                      <span className="text-accent">{r.to ?? "—"}</span>
+                    </p>
+                  )}
+                </div>
+                {r.comment && <p className="text-sm leading-relaxed text-ink-2">{r.comment}</p>}
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 

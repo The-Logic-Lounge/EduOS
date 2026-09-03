@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { studentBatchPerformance, studentOverallPerformance, skillGaps } from "@/lib/analytics";
+import { studentBatchPerformance, studentOverallPerformance, skillGaps, skillProgression } from "@/lib/analytics";
 
 /** Everything the model is allowed to know about one student. Nothing else reaches it. */
 export type StudentContext = NonNullable<Awaited<ReturnType<typeof buildStudentContext>>>;
@@ -35,7 +35,7 @@ export async function buildStudentContext(studentId: string) {
   });
   if (!student) return null;
 
-  const [overall, gaps, recent, batchPerf] = await Promise.all([
+  const [overall, gaps, recent, batchPerf, progression] = await Promise.all([
     studentOverallPerformance(studentId),
     skillGaps(studentId),
     db.assessmentResult.findMany({
@@ -50,6 +50,7 @@ export async function buildStudentContext(studentId: string) {
         ...pick(await studentBatchPerformance(studentId, e.batch.id)),
       })),
     ),
+    skillProgression(studentId),
   ]);
 
   const progress = student.enrollments.flatMap((e) => e.progress);
@@ -72,6 +73,20 @@ export async function buildStudentContext(studentId: string) {
       category: s.skill.category,
       level: s.level,
       score: s.score,
+    })),
+    // How each skill MOVED, not just where it landed. Capped — top 8 skills by evidence
+    // count, last 6 points each — so the context stays ~2KB.
+    skillProgression: progression.slice(0, 8).map((p) => ({
+      skill: p.skillName,
+      category: p.category,
+      firstLevel: p.points[0]?.level ?? null,
+      currentLevel: p.points[p.points.length - 1]?.level ?? null,
+      firstScore: p.firstScore,
+      currentScore: p.currentScore,
+      delta: p.delta,
+      direction: p.direction,
+      evidenceCount: p.points.length,
+      points: p.points.slice(-6).map((pt) => ({ date: pt.date, score: pt.score, level: pt.level })),
     })),
     skillGaps: gaps.slice(0, 8).map((g) => ({
       skill: g.skill,

@@ -156,7 +156,7 @@ export async function instructorRows(): Promise<InstructorRow[]> {
  * an unbounded Promise.all over 240 students exhausts it and every management
  * page 500s with P2024. Cap the in-flight queries instead of the row count.
  */
-async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out = new Array<R>(items.length);
   let next = 0;
   await Promise.all(

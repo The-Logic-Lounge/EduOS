@@ -73,6 +73,17 @@ const SkillPassportSchema = z.object({
     )
     .default([]),
   narrative: z.string().default(""),
+  // Levels/labels, never invented numbers — the movement is already computed in the context.
+  progression: z
+    .array(
+      z.object({
+        skill: z.string(),
+        from: z.string().default(""),
+        to: z.string().default(""),
+        comment: z.string().default(""),
+      }),
+    )
+    .default([]),
   gaps: z
     .array(
       z.object({
@@ -114,6 +125,15 @@ export async function skillPassport(studentId: string): Promise<Feature<SkillPas
         : `${ctx.student.name} has ${ctx.attainedSkills.length} verified skill(s) across ${ctx.courses.length} enrolment(s), ` +
           `with an overall performance of ${ctx.overallPerformance.overall}% ` +
           `(assessments ${ctx.overallPerformance.assessmentPct}%, assignments ${ctx.overallPerformance.assignmentPct}%, attendance ${ctx.overallPerformance.attendancePct}%).`,
+    progression: ctx.skillProgression.map((p) => ({
+      skill: p.skill,
+      from: p.firstLevel ?? "Not attained",
+      to: p.currentLevel ?? "Not attained",
+      comment:
+        p.evidenceCount < 2
+          ? `Only ${p.evidenceCount} assessment of evidence — not enough to show a trend yet.`
+          : `${p.direction} — ${p.firstScore}% to ${p.currentScore}% (${p.delta >= 0 ? "+" : ""}${p.delta}) across ${p.evidenceCount} assessments.`,
+    })),
     gaps: ctx.skillGaps.map((g) => ({
       skill: g.skill,
       targetLevel: g.targetLevel,

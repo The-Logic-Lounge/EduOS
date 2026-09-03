@@ -13,14 +13,15 @@ const PAGES = {
   STUDENT: ["/student", "/student/courses", "/student/attendance", "/student/assessments",
             "/student/assignments", "/student/passport", "/student/career"],
   INSTRUCTOR: ["/instructor", "/instructor/batches", "/instructor/copilot", "/courses", "/courses/new"],
-  MANAGEMENT: ["/management", "/management/students", "/management/instructors",
-               "/management/courses", "/management/intelligence", "/management/ask"],
+  MANAGEMENT: ["/management", "/management/students", "/management/students/new",
+               "/management/instructors", "/management/courses",
+               "/management/intelligence", "/management/ask"],
 };
 
 const APIS = {
   STUDENT: ["/api/student/overview"],
   INSTRUCTOR: ["/api/instructor/batches"],
-  MANAGEMENT: ["/api/management/overview", "/api/management/students"],
+  MANAGEMENT: ["/api/management/overview", "/api/management/students", "/api/students"],
 };
 
 const CRASH = /Application error|error occurred in the Server Components render|"digest"/;
@@ -80,6 +81,33 @@ async function run() {
         log(false, `${path} — ${e.message}`);
       }
     }
+  }
+
+  // [id] routes are where crashes hide — a list page can be green while every detail 500s.
+  try {
+    const cookie = await login("MANAGEMENT");
+    const res = await fetch(`${BASE}/api/students?limit=1`, { headers: { cookie } });
+    const body = await res.json();
+    const id = (body?.data?.rows ?? body?.data?.students ?? [])[0]?.id;
+    if (!id) {
+      log(false, "[id] routes — could not read a student id from /api/students");
+    } else {
+      console.log(`\n── DETAIL ROUTES (student ${id}) ─────────`);
+      for (const path of [
+        `/management/students/${id}`, `/management/students/${id}/edit`,
+        `/api/students/${id}`, `/api/students/${id}/courses`, `/api/students/${id}/attendance`,
+        `/api/students/${id}/assessments`, `/api/students/${id}/assignments`,
+        `/api/students/${id}/performance`, `/api/students/${id}/progress`,
+      ]) {
+        const r = await fetch(BASE + path, { headers: { cookie } });
+        const t = await r.text();
+        const isApi = path.startsWith("/api/");
+        const okNow = r.status === 200 && (isApi ? JSON.parse(t || "{}").success === true : !CRASH.test(t));
+        log(okNow, `${path} → ${r.status}${!isApi && r.status === 200 && CRASH.test(t) ? " (page crashed)" : ""}`);
+      }
+    }
+  } catch (e) {
+    log(false, `[id] routes — ${e.message}`);
   }
 
   console.log(`\n${failures === 0 ? "PASS — every page rendered" : `FAIL — ${failures} problem(s)`}`);

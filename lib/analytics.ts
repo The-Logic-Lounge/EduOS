@@ -293,3 +293,89 @@ export async function skillGaps(studentId: string) {
     })
     .filter((s) => s.isGap);
 }
+
+export type SkillProgressionPoint = {
+  date: string;                  // ISO day of the assessment that produced this point
+  score: number;                 // running weighted score AFTER this evidence
+  level: SkillLevel | null;
+  assessment: string;
+};
+
+export type SkillProgression = {
+  skillId: string;
+  skillName: string;
+  category: string;
+  points: SkillProgressionPoint[];   // chronological
+  firstScore: number;
+  currentScore: number;
+  delta: number;                     // currentScore - firstScore
+  direction: "improving" | "declining" | "steady";
+};
+
+/**
+ * How a student's skills have MOVED — the running weighted score for each skill after
+ * every piece of assessment evidence, in date order.
+ *
+ * Same ModuleSkill weighting and same skillLevelFromScore() thresholds as
+ * recomputeStudentSkills(), so the LAST point of a progression is exactly that skill's
+ * stored StudentSkill.score. If those two ever disagree the passport contradicts itself.
+ *
+ * One query, aggregated in memory. Per-skill queries would fan out over the small Prisma
+ * pool — see the P2024 note in lib/management.ts.
+ */
+export async function skillProgression(studentId: string): Promise<SkillProgression[]> {
+  const results = await db.assessmentResult.findMany({
+    where: { studentId },
+    orderBy: [{ assessment: { scheduledAt: "asc" } }, { id: "asc" }],
+    select: {
+      score: true,
+      assessment: {
+        select: {
+          title: true,
+          maxScore: true,
+          scheduledAt: true,
+          module: {
+            select: {
+              skills: {
+                select: { weight: true, skill: { select: { id: true, name: true, category: true } } },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  type Acc = { name: string; category: string; got: number; max: number; points: SkillProgressionPoint[] };
+  const acc = new Map<string, Acc>();
+
+  for (const r of results) {
+    for (const ms of r.assessment.module?.skills ?? []) {
+      const row: Acc =
+        acc.get(ms.skill.id) ?? { name: ms.skill.name, category: ms.skill.category, got: 0, max: 0, points: [] };
+      row.got += r.score * ms.weight;
+      row.max += r.assessment.maxScore * ms.weight;
+      const score = Math.round(pct(row.got, row.max));
+      row.points.push({
+        date: r.assessment.scheduledAt.toISOString().slice(0, 10),
+        score,
+        level: skillLevelFromScore(score),
+        assessment: r.assessment.title,
+      });
+      acc.set(ms.skill.id, row);
+    }
+  }
+
+  return [...acc.entries()]
+    .map(([skillId, r]) => {
+      const firstScore = r.points[0]?.score ?? 0;
+      const currentScore = r.points[r.points.length - 1]?.score ?? 0;
+      const delta = currentScore - firstScore;
+      // One point is a dot, not a trend — the caller must say "not enough evidence",
+      // never draw a line through it.
+      const direction: SkillProgression["direction"] =
+        r.points.length < 2 || Math.abs(delta) < 5 ? "steady" : delta > 0 ? "improving" : "declining";
+      return { skillId, skillName: r.name, category: r.category, points: r.points, firstScore, currentScore, delta, direction };
+    })
+    .sort((a, b) => b.points.length - a.points.length || b.currentScore - a.currentScore);
+}

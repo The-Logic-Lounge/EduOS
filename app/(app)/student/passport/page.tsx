@@ -1,13 +1,56 @@
 import EmptyState from "@/components/ui/EmptyState";
 import { requirePageRole } from "@/lib/page-auth";
 import { db } from "@/lib/db";
-import { skillGaps, studentOverallPerformance } from "@/lib/analytics";
+import { skillGaps, skillProgression, studentOverallPerformance, type SkillProgression } from "@/lib/analytics";
 import { fmtDate, INSUFFICIENT } from "../_shared";
 import AiPassportPanel from "./AiPassportPanel";
 
 export const dynamic = "force-dynamic";
 
 const LEVEL_RANK = { BEGINNER: 1, INTERMEDIATE: 2, ADVANCED: 3, EXPERT: 4 } as const;
+
+const DIRECTION = {
+  improving: { mark: "↗", cls: "text-success" },
+  declining: { mark: "↘", cls: "text-danger" },
+  steady: { mark: "→", cls: "text-ink-3" },
+} as const;
+
+/**
+ * Hand-rolled sparkline. Recharts is client-only and this document is server-rendered —
+ * a polyline is five lines of SVG and costs the page nothing.
+ * Only ever called with 2+ points; one point is a dot, not a trend.
+ */
+function Sparkline({ points }: { points: SkillProgression["points"] }) {
+  const W = 108;
+  const H = 28;
+  const P = 3;
+  const x = (i: number) => P + (i * (W - 2 * P)) / (points.length - 1);
+  const y = (s: number) => H - P - (Math.max(0, Math.min(100, s)) / 100) * (H - 2 * P);
+  const last = points[points.length - 1];
+
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      width={W}
+      height={H}
+      className="overflow-visible"
+      role="img"
+      aria-label={`Scores ${points.map((p) => p.score).join(", ")}`}
+    >
+      {/* the 40 mark — below this line a skill is not yet claimable */}
+      <line x1={0} x2={W} y1={y(40)} y2={y(40)} className="stroke-hairline-2" strokeWidth={1} strokeDasharray="2 3" />
+      <polyline
+        points={points.map((p, i) => `${x(i)},${y(p.score)}`).join(" ")}
+        fill="none"
+        className="stroke-accent"
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+      <circle cx={x(points.length - 1)} cy={y(last.score)} r={2.5} className="fill-accent" />
+    </svg>
+  );
+}
 
 const monogram = (name: string) =>
   name
@@ -21,7 +64,7 @@ export default async function SkillPassportPage() {
   const user = await requirePageRole("STUDENT");
   const studentId = user.studentId!;
 
-  const [student, skills, gaps, perf] = await Promise.all([
+  const [student, skills, gaps, perf, progression] = await Promise.all([
     db.student.findUnique({
       where: { id: studentId },
       select: {
@@ -47,12 +90,14 @@ export default async function SkillPassportPage() {
     }),
     skillGaps(studentId),
     studentOverallPerformance(studentId),
+    skillProgression(studentId),
   ]);
 
   const name = student?.user.name ?? user.name;
   const rollNo = student?.rollNo ?? "—";
   const categories = [...new Set(skills.map((s) => s.skill.category))];
   const expertCount = skills.filter((s) => LEVEL_RANK[s.level] >= 3).length;
+  const trended = progression.filter((p) => p.points.length >= 2).length;
   const mrz = `EDUOS<<${rollNo}<<${name.toUpperCase().replace(/\s+/g, "<")}<<SKILLS${String(skills.length).padStart(2, "0")}<<GAPS${String(gaps.length).padStart(2, "0")}`;
 
   return (
@@ -190,6 +235,77 @@ export default async function SkillPassportPage() {
                   </p>
                 </li>
               ))}
+            </ul>
+          )}
+        </section>
+
+        {/* ------------------------------------------------------- skill progression */}
+        <section className="border-t border-hairline px-6 py-8 sm:px-9">
+          <div className="flex flex-wrap items-baseline justify-between gap-4">
+            <h2 className="font-display text-title text-ink">Skill progression</h2>
+            <p className="mono text-xs text-ink-3">
+              {trended} of {progression.length} with a trend &middot; chronological
+            </p>
+          </div>
+          <hr className="rule mt-4 mb-6" />
+
+          {progression.length === 0 ? (
+            <EmptyState
+              title={INSUFFICIENT}
+              description="Progression is traced through your graded assessments in date order. It appears once your first assessment is marked."
+            />
+          ) : (
+            <ul>
+              {progression.map((p) => {
+                const dir = DIRECTION[p.direction];
+                const enough = p.points.length >= 2;
+                return (
+                  <li
+                    key={p.skillId}
+                    className="grid gap-x-6 gap-y-3 border-t border-hairline py-4 first:border-t-0 sm:grid-cols-[1fr_auto_9.5rem] sm:items-center"
+                  >
+                    <div className="min-w-0">
+                      <span className="text-[0.95rem] text-ink">{p.skillName}</span>
+                      <span className="stat ml-3">{p.category}</span>
+                      <p className="mono mt-1 text-[0.7rem] text-ink-3">
+                        {p.points.length} point{p.points.length === 1 ? "" : "s"} &middot;{" "}
+                        {p.points[0].date} &rarr; {p.points[p.points.length - 1].date}
+                      </p>
+                    </div>
+
+                    <div className="flex h-7 items-center">
+                      {enough ? (
+                        <Sparkline points={p.points} />
+                      ) : (
+                        <span className="mono text-[0.7rem] text-ink-3">Not enough evidence yet</span>
+                      )}
+                    </div>
+
+                    <div className="mono flex items-center justify-between gap-3 text-xs sm:justify-end">
+                      <span className="text-ink-2">
+                        {p.points[0].level ?? "—"}
+                        <span aria-hidden className="mx-1.5 text-ink-3">
+                          &rarr;
+                        </span>
+                        <span className="text-accent">{p.points[p.points.length - 1].level ?? "—"}</span>
+                      </span>
+                      <span className={`w-14 text-right ${enough ? dir.cls : "text-ink-3"}`}>
+                        {enough ? (
+                          <>
+                            <span aria-hidden className="mr-1">
+                              {dir.mark}
+                            </span>
+                            {p.delta > 0 ? "+" : ""}
+                            {p.delta}
+                          </>
+                        ) : (
+                          "—"
+                        )}
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
