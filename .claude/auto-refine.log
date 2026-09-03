@@ -1,0 +1,1 @@
+2026-09-03T23:25:11 refined (exit 0): Conversation contains durable environment gotchas (Supabase IPv6-only, pooler region discovery, URL password encoding), verified setup paths (Postgres 17.9 Homebrew, regional connectivity), and architectural decisions (lib/analytics.ts as canonical source). These are specific to this user's environment and will help future Edu OS work.

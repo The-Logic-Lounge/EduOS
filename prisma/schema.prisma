@@ -1,0 +1,320 @@
+// Edu OS — AI operating system for a training institute.
+// Synthetic data only. No real student records.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  MANAGEMENT
+  INSTRUCTOR
+  STUDENT
+}
+
+enum SkillLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum BatchStatus {
+  UPCOMING
+  ACTIVE
+  COMPLETED
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  DROPPED
+}
+
+enum AssessmentType {
+  QUIZ
+  MIDTERM
+  FINAL
+  PROJECT
+  LAB
+}
+
+enum SubmissionStatus {
+  SUBMITTED
+  LATE
+  MISSING
+  GRADED
+}
+
+enum ProgressStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+model User {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  passwordHash String
+  name         String
+  role         Role
+  createdAt    DateTime    @default(now())
+  student      Student?
+  instructor   Instructor?
+}
+
+model Student {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rollNo    String   @unique
+  phone     String
+  city      String
+  education String
+  joinedAt  DateTime
+
+  enrollments  Enrollment[]
+  attendance   Attendance[]
+  submissions  Submission[]
+  results      AssessmentResult[]
+  skills       StudentSkill[]
+}
+
+model Instructor {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeNo     String   @unique
+  specialization String
+  bio            String
+  joinedAt       DateTime
+
+  batches Batch[]
+}
+
+model Course {
+  id            String  @id @default(cuid())
+  code          String  @unique
+  title         String
+  description   String
+  level         String
+  durationWeeks Int
+
+  modules Module[]
+  batches Batch[]
+  skills  CourseSkill[]
+}
+
+model Module {
+  id            String   @id @default(cuid())
+  courseId      String
+  course        Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  order         Int
+  title         String
+  description   String
+  objectives    String[]
+  durationHours Int
+
+  skills      ModuleSkill[]
+  sessions    ClassSession[]
+  assignments Assignment[]
+  assessments Assessment[]
+  progress    ModuleProgress[]
+
+  @@unique([courseId, order])
+}
+
+model Skill {
+  id       String @id @default(cuid())
+  name     String @unique
+  category String
+
+  courses  CourseSkill[]
+  modules  ModuleSkill[]
+  students StudentSkill[]
+}
+
+model CourseSkill {
+  courseId    String
+  course      Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  skillId     String
+  skill       Skill      @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  targetLevel SkillLevel
+
+  @@id([courseId, skillId])
+}
+
+model ModuleSkill {
+  moduleId String
+  module   Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  skillId  String
+  skill    Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  weight   Int    @default(1)
+
+  @@id([moduleId, skillId])
+}
+
+model Batch {
+  id           String      @id @default(cuid())
+  code         String      @unique
+  name         String
+  courseId     String
+  course       Course      @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  instructorId String
+  instructor   Instructor  @relation(fields: [instructorId], references: [id])
+  startDate    DateTime
+  endDate      DateTime
+  schedule     String
+  capacity     Int
+  status       BatchStatus
+
+  enrollments Enrollment[]
+  sessions    ClassSession[]
+  assignments Assignment[]
+  assessments Assessment[]
+}
+
+model Enrollment {
+  id         String           @id @default(cuid())
+  studentId  String
+  student    Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  batchId    String
+  batch      Batch            @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  enrolledAt DateTime
+  status     EnrollmentStatus
+  finalGrade String?
+
+  progress ModuleProgress[]
+
+  @@unique([studentId, batchId])
+}
+
+model ClassSession {
+  id                String   @id @default(cuid())
+  batchId           String
+  batch             Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  moduleId          String?
+  module            Module?  @relation(fields: [moduleId], references: [id])
+  date              DateTime
+  topic             String
+  conducted         Boolean  @default(true)
+  instructorPresent Boolean  @default(true)
+
+  attendance Attendance[]
+
+  @@unique([batchId, date])
+}
+
+model Attendance {
+  id        String           @id @default(cuid())
+  sessionId String
+  session   ClassSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentId String
+  student   Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  status    AttendanceStatus
+
+  @@unique([sessionId, studentId])
+}
+
+model Assignment {
+  id          String   @id @default(cuid())
+  batchId     String
+  batch       Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  moduleId    String?
+  module      Module?  @relation(fields: [moduleId], references: [id])
+  title       String
+  description String
+  maxScore    Int
+  dueDate     DateTime
+
+  submissions Submission[]
+}
+
+model Submission {
+  id           String           @id @default(cuid())
+  assignmentId String
+  assignment   Assignment       @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  score        Int?
+  status       SubmissionStatus
+  submittedAt  DateTime?
+
+  @@unique([assignmentId, studentId])
+}
+
+model Assessment {
+  id          String         @id @default(cuid())
+  batchId     String
+  batch       Batch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  moduleId    String?
+  module      Module?        @relation(fields: [moduleId], references: [id])
+  title       String
+  type        AssessmentType
+  maxScore    Int
+  scheduledAt DateTime
+
+  results AssessmentResult[]
+}
+
+model AssessmentResult {
+  id           String     @id @default(cuid())
+  assessmentId String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  score        Int
+
+  @@unique([assessmentId, studentId])
+}
+
+model ModuleProgress {
+  id           String         @id @default(cuid())
+  enrollmentId String
+  enrollment   Enrollment     @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  moduleId     String
+  module       Module         @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  status       ProgressStatus
+  completedAt  DateTime?
+
+  @@unique([enrollmentId, moduleId])
+}
+
+model StudentSkill {
+  id            String     @id @default(cuid())
+  studentId     String
+  student       Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  skillId       String
+  skill         Skill      @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  level         SkillLevel
+  score         Int
+  evidenceCount Int        @default(0)
+  updatedAt     DateTime   @updatedAt
+
+  @@unique([studentId, skillId])
+}
+
+// Cache for AI outputs so the demo is instant and survives an LLM outage.
+model AiInsight {
+  id          String   @id @default(cuid())
+  kind        String
+  subjectType String
+  subjectId   String
+  payload     Json
+  model       String
+  createdAt   DateTime @default(now())
+
+  @@index([kind, subjectType, subjectId])
+}
