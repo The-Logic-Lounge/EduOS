@@ -150,6 +150,26 @@ export async function instructorRows(): Promise<InstructorRow[]> {
   return rows.sort((a, b) => b.overall - a.overall);
 }
 
+
+/**
+ * Bounded fan-out. Prisma's pool is small (and Supabase's pooler smaller still);
+ * an unbounded Promise.all over 240 students exhausts it and every management
+ * page 500s with P2024. Cap the in-flight queries instead of the row count.
+ */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++;
+        out[i] = await fn(items[i]);
+      }
+    }),
+  );
+  return out;
+}
+
 export async function studentRows(limit = 100): Promise<{ rows: StudentRow[]; total: number }> {
   const [total, students] = await Promise.all([
     db.student.count(),
@@ -166,16 +186,14 @@ export async function studentRows(limit = 100): Promise<{ rows: StudentRow[]; to
     }),
   ]);
 
-  const rows = await Promise.all(
-    students.map(async (s) => ({
-      id: s.id,
-      name: s.user.name,
-      rollNo: s.rollNo,
-      city: s.city,
-      batches: s.enrollments.map((e) => e.batch.code),
-      perf: await studentOverallPerformance(s.id),
-    })),
-  );
+  const rows = await mapLimit(students, 4, async (s) => ({
+    id: s.id,
+    name: s.user.name,
+    rollNo: s.rollNo,
+    city: s.city,
+    batches: s.enrollments.map((e) => e.batch.code),
+    perf: await studentOverallPerformance(s.id),
+  }));
   return { rows, total };
 }
 
@@ -187,11 +205,22 @@ export async function skillStats(): Promise<SkillStat[]> {
     db.skill.findMany({ select: { id: true, name: true, category: true } }),
   ]);
 
-  const gapCount = new Map<string, number>();
-  const perStudent = await Promise.all(students.map((s) => skillGaps(s.id)));
-  for (const gaps of perStudent) {
-    for (const g of gaps) gapCount.set(g.skill, (gapCount.get(g.skill) ?? 0) + 1);
-  }
+  // One aggregate instead of skillGaps() per student (240 students x 2 queries = P2024).
+  // Same rule as skillGaps(): a course-targeted skill the student has not reached.
+  const gapRows = await db.$queryRaw<{ skillId: string; gaps: bigint }[]>`
+    SELECT cs."skillId" AS "skillId", COUNT(DISTINCT e."studentId") AS gaps
+    FROM "Enrollment" e
+    JOIN "Batch" b        ON b.id = e."batchId"
+    JOIN "CourseSkill" cs ON cs."courseId" = b."courseId"
+    LEFT JOIN "StudentSkill" ss
+           ON ss."studentId" = e."studentId" AND ss."skillId" = cs."skillId"
+    WHERE ss.id IS NULL
+       OR (CASE ss.level        WHEN 'BEGINNER' THEN 1 WHEN 'INTERMEDIATE' THEN 2
+                                WHEN 'ADVANCED' THEN 3 WHEN 'EXPERT' THEN 4 END)
+        < (CASE cs."targetLevel" WHEN 'BEGINNER' THEN 1 WHEN 'INTERMEDIATE' THEN 2
+                                WHEN 'ADVANCED' THEN 3 WHEN 'EXPERT' THEN 4 END)
+    GROUP BY cs."skillId"`;
+  const gapBySkillId = new Map(gapRows.map((r) => [r.skillId, Number(r.gaps)]));
 
   const attainedById = new Map(attained.map((a) => [a.skillId, a._count._all]));
   return skills
@@ -199,7 +228,7 @@ export async function skillStats(): Promise<SkillStat[]> {
       name: s.name,
       category: s.category,
       attained: attainedById.get(s.id) ?? 0,
-      gaps: gapCount.get(s.name) ?? 0,
+      gaps: gapBySkillId.get(s.id) ?? 0,
     }))
     .sort((a, b) => b.gaps - a.gaps || b.attained - a.attained);
 }
@@ -210,13 +239,14 @@ export async function attendanceDistribution() {
 }
 
 export async function managementOverview(): Promise<ManagementOverview> {
-  const [summary, courses, batches, instructors, attendance, skills] = await Promise.all([
-    instituteSummary(),
-    courseRows(),
-    batchRows(),
-    instructorRows(),
-    attendanceDistribution(),
-    skillStats(),
-  ]);
+  // Sequential on purpose. Each of these already fans out internally over courses,
+  // batches and instructors; running all six at once put ~100 queries in flight and
+  // every management page 500'd with Prisma P2024 (pool exhausted).
+  const summary = await instituteSummary();
+  const courses = await courseRows();
+  const batches = await batchRows();
+  const instructors = await instructorRows();
+  const attendance = await attendanceDistribution();
+  const skills = await skillStats();
   return { summary, courses, batches, instructors, attendance, skills };
 }

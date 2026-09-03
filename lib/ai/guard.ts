@@ -13,7 +13,8 @@ export function numbersIn(obj: unknown): Set<number> {
     if (typeof v === "number") {
       if (Number.isFinite(v)) out.add(v);
     } else if (typeof v === "string") {
-      for (const m of v.matchAll(/-?\d+(?:\.\d+)?/g)) {
+      // "7,340" is one number, not 7 and 340 — strip thousands separators first.
+      for (const m of v.replace(/(\d),(?=\d{3}(?!\d))/g, "$1").matchAll(/-?\d+(?:\.\d+)?/g)) {
         const n = Number(m[0]);
         if (Number.isFinite(n)) out.add(n);
       }

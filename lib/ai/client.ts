@@ -14,6 +14,7 @@ const BASE_URL = () =>
   process.env.LLM_BASE_URL || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1";
 
 const TIMEOUT_MS = 45_000;
+const MAX_TOOL_ROUNDS = 3;
 
 let client: OpenAI | null = null;
 
@@ -106,9 +107,9 @@ export type ToolSpec = {
 };
 
 /**
- * One tool-call round trip: model picks tools -> we execute them -> results go back ->
- * model writes the answer. Deliberately ONE round: the allowlist is small and flat,
- * and a demo cannot wait on a multi-hop loop.
+ * Tool-calling loop over the allowlist: model picks tools -> we execute them -> results go back.
+ * Bounded at 3 rounds because the model routinely needs a second one (list the courses, THEN
+ * ask about the codes it just learned); after that it must answer with what it has.
  */
 export async function chatWithTools(args: {
   system: string;
@@ -128,43 +129,46 @@ export async function chatWithTools(args: {
       { role: "system", content: args.system },
       { role: "user", content: args.user },
     ];
-
-    const first = await openai.chat.completions.create(
-      { model: MODEL(), temperature: 0, messages, tools, tool_choice: "auto" },
-      { signal: AbortSignal.timeout(TIMEOUT_MS) },
-    );
-
-    const msg = first.choices[0]?.message;
-    const calls = msg?.tool_calls ?? [];
-    if (calls.length === 0) return { ok: false, reason: "no_tool_selected" };
-
-    messages.push(msg as OpenAI.Chat.Completions.ChatCompletionMessageParam);
-
     const used: { name: string; input: unknown; result: unknown }[] = [];
-    for (const call of calls) {
-      let input: Record<string, unknown> = {};
-      try {
-        input = JSON.parse(call.function.arguments || "{}");
-      } catch {
-        /* a malformed argument blob is an empty call, not a crash */
+
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      const res = await openai.chat.completions.create(
+        { model: MODEL(), temperature: 0, messages, tools, tool_choice: "auto" },
+        { signal: AbortSignal.timeout(TIMEOUT_MS) },
+      );
+      const msg = res.choices[0]?.message;
+      messages.push(msg as OpenAI.Chat.Completions.ChatCompletionMessageParam);
+      const calls = msg?.tool_calls ?? [];
+
+      if (calls.length === 0) {
+        // No tool wanted on the first pass means the question is not answerable from analytics.
+        if (used.length === 0) return { ok: false, reason: "no_tool_selected" };
+        const answer = (msg?.content ?? "").trim();
+        return answer ? { ok: true, data: { answer, used } } : { ok: false, reason: "empty_answer" };
       }
-      const result = await args.exec(call.function.name, input);
-      used.push({ name: call.function.name, input, result });
-      messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result ?? null) });
+
+      for (const call of calls) {
+        let input: Record<string, unknown> = {};
+        try {
+          input = JSON.parse(call.function.arguments || "{}");
+        } catch {
+          /* a malformed argument blob is an empty call, not a crash */
+        }
+        const result = await args.exec(call.function.name, input);
+        used.push({ name: call.function.name, input, result });
+        messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result ?? null) });
+      }
     }
 
-    if (used.every((u) => u.result === null || u.result === undefined)) {
-      return { ok: false, reason: "tools_returned_nothing" };
-    }
+    if (used.length === 0) return { ok: false, reason: "no_tool_selected" };
 
-    const second = await openai.chat.completions.create(
+    // Out of rounds: make it answer with what the tools already returned.
+    const final = await openai.chat.completions.create(
       { model: MODEL(), temperature: 0.1, messages },
       { signal: AbortSignal.timeout(TIMEOUT_MS) },
     );
-
-    const answer = (second.choices[0]?.message?.content ?? "").trim();
-    if (!answer) return { ok: false, reason: "empty_answer" };
-    return { ok: true, data: { answer, used } };
+    const answer = (final.choices[0]?.message?.content ?? "").trim();
+    return answer ? { ok: true, data: { answer, used } } : { ok: false, reason: "empty_answer" };
   } catch (e) {
     return { ok: false, reason: e instanceof Error ? e.message : "llm_error" };
   }
