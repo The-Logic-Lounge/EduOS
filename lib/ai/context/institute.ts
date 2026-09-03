@@ -72,6 +72,7 @@ export async function buildInstituteContext() {
         batches: c._count.batches,
         overall: p.overall,
         assessmentPct: p.assessmentPct,
+        assignmentPct: p.assignmentPct,
         attendancePct: p.attendancePct,
         sampleSize: p.sampleSize,
       };
@@ -89,6 +90,8 @@ export async function buildInstituteContext() {
         instructor: b.instructor.user.name,
         students: b._count.enrollments,
         overall: p.overall,
+        assessmentPct: p.assessmentPct,
+        assignmentPct: p.assignmentPct,
         attendancePct: p.attendancePct,
         sampleSize: p.sampleSize,
       };

@@ -35,10 +35,14 @@ export default function AskPanel() {
         body: JSON.stringify({ question: text }),
       });
       const json = await res.json();
-      const payload = json && typeof json === "object" && "data" in json ? json.data : json;
+      const feature = json && typeof json === "object" && "data" in json ? json.data : json;
+      const payload =
+        feature && typeof feature === "object" && feature !== null && "data" in feature
+          ? (feature as { data: unknown }).data
+          : feature;
       const source =
-        payload && typeof payload === "object" && payload !== null && "source" in payload
-          ? String((payload as { source: unknown }).source)
+        feature && typeof feature === "object" && feature !== null && "source" in feature
+          ? String((feature as { source: unknown }).source)
           : res.ok
             ? undefined
             : "fallback";

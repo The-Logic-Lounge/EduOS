@@ -22,7 +22,7 @@ const LIST = ["bullets", "points", "findings", "highlights", "recommendations", 
 const TABLE = ["table", "rows", "items", "results", "breakdown", "ranking", "comparison"];
 const HIDE = new Set([
   ...HEADLINE, ...NUMBER, ...LIST, ...TABLE,
-  "source", "model", "insufficient_data", "insufficientData", "grounded", "ungrounded", "question", "cached",
+  "source", "model", "insufficient_data", "insufficientData", "grounded", "ungrounded", "question", "cached", "toolsUsed",
 ]);
 
 export function hasInsufficientData(p: Json): boolean {
