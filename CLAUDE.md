@@ -9,7 +9,7 @@ student record is used, and this project shares nothing with the live GSS school
 
 ## Live
 - Production: https://edu-os-abdullah-basims-projects.vercel.app
-- DB: dedicated Supabase project `rcftjcmariirhvvaoraa` (ap-southeast-1), **transaction
+- DB: dedicated Supabase project (ap-southeast-1) — ref and credentials in `.env`, never committed, **transaction
   pooler on :6543** with `pgbouncer=true` — session mode caps at 15 clients and 500s the
   management pages under fan-out.
 - LLM: Alibaba Model Studio (DashScope) OpenAI-compatible, `qwen-plus`.

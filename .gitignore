@@ -7,3 +7,7 @@ node_modules
 next-env.d.ts
 .vercel
 .env*
+
+# Claude session state — local only, not shared
+.claude/harness/
+.claude/auto-refine*
