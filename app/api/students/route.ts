@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
-import { listStudents, nextRollNo } from "@/lib/students";
+import { listStudents, nextRollNo, backfillEnrollment } from "@/lib/students";
 import { StudentCreate, zodMessage } from "@/lib/schemas/student";
 
 export const dynamic = "force-dynamic";
@@ -64,9 +64,10 @@ export async function POST(req: Request) {
         select: { id: true, rollNo: true },
       });
       if (batchId) {
-        await tx.enrollment.create({
+        const enrollment = await tx.enrollment.create({
           data: { studentId: created.id, batchId, enrolledAt: new Date(), status: "ACTIVE" },
         });
+        await backfillEnrollment(tx, enrollment.id, created.id, batchId);
       }
       return created;
     });

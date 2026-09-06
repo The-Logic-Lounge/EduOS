@@ -3,12 +3,16 @@ import {
   batchPerformance as batchPerf,
   batchPerformanceMany,
   coursePerformance as coursePerf,
+  EMPTY_PERF,
   instituteSummary as summary,
   instructorPerformance as instructorPerf,
   meanPerf,
+  studentBatchPerformance,
+  studentBatchPerformanceMany,
+  studentOverallPerformance,
 } from "@/lib/analytics";
-import { getAllSchedules } from "@/lib/scheduling/engine";
-import type { SkillLevel } from "@prisma/client";
+import { DAYS, detectConflicts, getAllSchedules } from "@/lib/scheduling/engine";
+import type { DayOfWeek, SkillLevel } from "@prisma/client";
 import type { ToolSpec } from "./client";
 
 /**
@@ -319,6 +323,193 @@ async function scheduleOverview() {
   };
 }
 
+async function createSchedule(input: {
+  batchCode: string;
+  day: string;
+  startTime: string;
+  endTime: string;
+  classroomName: string;
+  instructorName?: string;
+}) {
+  const batch = await db.batch.findFirst({
+    where: { code: { equals: (input.batchCode ?? "").trim(), mode: "insensitive" } },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      instructorId: true,
+      _count: { select: { enrollments: true } },
+    },
+  });
+  if (!batch) return { error: `No batch with code "${input.batchCode}".` };
+
+  const classroom = await db.classroom.findFirst({
+    where: { name: { equals: (input.classroomName ?? "").trim(), mode: "insensitive" } },
+    select: { id: true, name: true, building: true, capacity: true },
+  });
+  if (!classroom) return { error: `No classroom with name "${input.classroomName}".` };
+
+  let instructorId = batch.instructorId;
+  let instructorName: string | null = null;
+  if (input.instructorName) {
+    const instructor = await db.instructor.findFirst({
+      where: { user: { name: { contains: input.instructorName.trim(), mode: "insensitive" } } },
+      select: { id: true, user: { select: { name: true } } },
+    });
+    if (!instructor) return { error: `No instructor matching "${input.instructorName}".` };
+    instructorId = instructor.id;
+    instructorName = instructor.user.name;
+  } else {
+    const instructor = await db.instructor.findUnique({
+      where: { id: instructorId },
+      select: { user: { select: { name: true } } },
+    });
+    instructorName = instructor?.user.name ?? null;
+  }
+
+  const day = (input.day ?? "").toUpperCase().trim();
+  if (!DAYS.includes(day as DayOfWeek)) {
+    return { error: `Invalid day "${input.day}". Use one of: ${DAYS.join(", ")}.` };
+  }
+
+  const [existing, classrooms, availability] = await Promise.all([
+    db.schedule.findMany({
+      select: { id: true, batchId: true, instructorId: true, classroomId: true, day: true, startTime: true, endTime: true },
+    }),
+    db.classroom.findMany({ select: { id: true, name: true, building: true, capacity: true, hasTech: true } }),
+    db.instructorAvailability.findMany({
+      select: { instructorId: true, day: true, startTime: true, endTime: true, available: true },
+    }),
+  ]);
+
+  const candidate = {
+    day: day as DayOfWeek,
+    startTime: input.startTime,
+    endTime: input.endTime,
+    batchId: batch.id,
+    instructorId,
+    classroomId: classroom.id,
+    studentCount: batch._count.enrollments,
+  };
+
+  const conflicts = detectConflicts(candidate, existing, classrooms, availability);
+  if (conflicts.length > 0) {
+    return { error: "Schedule conflict detected.", conflicts };
+  }
+
+  await db.schedule.create({
+    data: {
+      batchId: batch.id,
+      instructorId,
+      classroomId: classroom.id,
+      day: day as DayOfWeek,
+      startTime: input.startTime,
+      endTime: input.endTime,
+    },
+  });
+
+  return {
+    created: true,
+    day,
+    startTime: input.startTime,
+    endTime: input.endTime,
+    batchCode: batch.code,
+    batchName: batch.name,
+    instructor: instructorName,
+    classroom: classroom.name,
+    building: classroom.building,
+  };
+}
+
+async function listStudents(input: { batchCode?: string; limit?: number }) {
+  const batch = input.batchCode
+    ? await db.batch.findFirst({
+        where: { code: { equals: input.batchCode.trim(), mode: "insensitive" } },
+        select: { id: true, code: true, name: true },
+      })
+    : null;
+  if (input.batchCode && !batch) return { error: `No batch with code "${input.batchCode}".` };
+
+  const students = await db.student.findMany({
+    where: batch ? { enrollments: { some: { batchId: batch.id, status: "ACTIVE" } } } : {},
+    orderBy: { user: { name: "asc" } },
+    take: clamp(input.limit, 50),
+    select: {
+      id: true,
+      rollNo: true,
+      user: { select: { name: true } },
+      _count: { select: { enrollments: true } },
+    },
+  });
+
+  return students.map((s) => ({
+    id: s.id,
+    rollNo: s.rollNo,
+    name: s.user.name,
+    enrollments: s._count.enrollments,
+  }));
+}
+
+async function studentPerformance(input: { identifier: string; batchCode?: string }) {
+  const student = await db.student.findFirst({
+    where: {
+      OR: [
+        { rollNo: { equals: input.identifier.trim(), mode: "insensitive" } },
+        { user: { name: { contains: input.identifier.trim(), mode: "insensitive" } } },
+      ],
+    },
+    select: { id: true, rollNo: true, user: { select: { name: true } } },
+  });
+  if (!student) return { error: `No student matching "${input.identifier}".` };
+
+  if (input.batchCode) {
+    const batch = await db.batch.findFirst({
+      where: { code: { equals: input.batchCode.trim(), mode: "insensitive" } },
+      select: { id: true, code: true, name: true },
+    });
+    if (!batch) return { error: `No batch with code "${input.batchCode}".` };
+    const perf = await studentBatchPerformance(student.id, batch.id);
+    return {
+      id: student.id,
+      rollNo: student.rollNo,
+      name: student.user.name,
+      batchCode: batch.code,
+      batchName: batch.name,
+      ...perf,
+    };
+  }
+
+  const perf = await studentOverallPerformance(student.id);
+  return { id: student.id, rollNo: student.rollNo, name: student.user.name, ...perf };
+}
+
+async function rankStudents(input: { batchCode: string; limit?: number }) {
+  const batch = await db.batch.findFirst({
+    where: { code: { equals: input.batchCode.trim(), mode: "insensitive" } },
+    select: { id: true, code: true, name: true },
+  });
+  if (!batch) return { error: `No batch with code "${input.batchCode}".` };
+
+  const enrollments = await db.enrollment.findMany({
+    where: { batchId: batch.id, status: "ACTIVE" },
+    select: { student: { select: { id: true, rollNo: true, user: { select: { name: true } } } } },
+  });
+
+  const perfMap = await studentBatchPerformanceMany(
+    enrollments.map((e) => ({ studentId: e.student.id, batchId: batch.id })),
+  );
+
+  const rows = enrollments.map((e) => {
+    const p = perfMap.get(`${e.student.id}:${batch.id}`) ?? EMPTY_PERF;
+    return { id: e.student.id, rollNo: e.student.rollNo, name: e.student.user.name, ...p };
+  });
+
+  return rows
+    .filter((r) => r.sampleSize > 0)
+    .sort((a, b) => b.overall - a.overall)
+    .slice(0, clamp(input.limit, 10));
+}
+
 const clamp = (n: number | undefined, fallback: number) =>
   Number.isFinite(n) && (n as number) > 0 ? Math.min(Math.floor(n as number), 50) : fallback;
 
@@ -456,6 +647,70 @@ const REGISTRY: Record<string, { spec: ToolSpec; run: Impl }> = {
       parameters: NO_ARGS,
     },
     run: scheduleOverview,
+  },
+  createSchedule: {
+    spec: {
+      name: "createSchedule",
+      description:
+        "Create a single timetable session. Resolves the batch and classroom by name, validates conflicts against existing schedules, instructor availability and classroom capacity, then persists the row. Use when the user asks to schedule, create, add, or book a class.",
+      parameters: {
+        type: "object",
+        properties: {
+          batchCode: str("Exact batch code, e.g. DS-05."),
+          day: str("Day of week in English, e.g. SATURDAY."),
+          startTime: str("24-hour start time, e.g. 08:00."),
+          endTime: str("24-hour end time, e.g. 09:30."),
+          classroomName: str("Exact classroom name, e.g. Room 201."),
+          instructorName: str("Optional instructor name; defaults to the batch's assigned instructor."),
+        },
+        required: ["batchCode", "day", "startTime", "endTime", "classroomName"],
+      },
+    },
+    run: createSchedule,
+  },
+  listStudents: {
+    spec: {
+      name: "listStudents",
+      description: "List students, optionally filtered to one active batch.",
+      parameters: {
+        type: "object",
+        properties: {
+          batchCode: str("Optional: restrict to this batch code."),
+          limit: { type: "number", description: "How many to return (default 50)." },
+        },
+      },
+    },
+    run: listStudents,
+  },
+  studentPerformance: {
+    spec: {
+      name: "studentPerformance",
+      description: "Performance of one student (overall or within a specific batch). Identifier can be roll number or name.",
+      parameters: {
+        type: "object",
+        properties: {
+          identifier: str("Student roll number or name."),
+          batchCode: str("Optional: restrict to this batch code."),
+        },
+        required: ["identifier"],
+      },
+    },
+    run: studentPerformance,
+  },
+  rankStudents: {
+    spec: {
+      name: "rankStudents",
+      description: "Rank students in one batch by overall performance (assessments 50%, assignments 30%, attendance 20%).",
+      parameters: {
+        type: "object",
+        properties: {
+          batchCode: str("Exact batch code."),
+          limit: { type: "number", description: "How many to return (default 10)." },
+        },
+        required: ["batchCode"],
+      },
+    },
+    run: rankStudents,
   },
 };
 

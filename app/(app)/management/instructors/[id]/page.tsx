@@ -18,6 +18,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
 import { PerfBadge, BATCH_STATUS_VARIANT, fmtDate, fmtPct, scoreVariant } from "@/components/instructor/perf";
 import { Score } from "../../ui";
+import InstructorActions from "./InstructorActions";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,7 @@ export default async function InstructorDetailPage({ params }: { params: Promise
   if (!detail) notFound();
 
   const { profile, perf, batches, courses } = detail;
+  const hasBatches = batches.length > 0;
 
   // Fetch supporting data in parallel
   const [students, sessions, assignments, assessments, progress] = await Promise.all([
@@ -51,14 +53,17 @@ export default async function InstructorDetailPage({ params }: { params: Promise
         title={profile.name}
         subtitle={profile.bio || profile.specialization}
         right={
-          <div className="flex items-end gap-6">
-            <div className="text-right">
-              <div className="stat">Employee no</div>
-              <div className="mono mt-1.5 text-[1.75rem] leading-none font-medium text-ink">
-                {profile.employeeNo}
+          <div className="flex flex-col items-end gap-3">
+            <div className="flex items-end gap-6">
+              <div className="text-right">
+                <div className="stat">Employee no</div>
+                <div className="mono mt-1.5 text-[1.75rem] leading-none font-medium text-ink">
+                  {profile.employeeNo}
+                </div>
               </div>
+              <Badge variant="neutral">{profile.specialization}</Badge>
             </div>
-            <Badge variant="neutral">{profile.specialization}</Badge>
+            <InstructorActions id={profile.id} hasBatches={hasBatches} />
           </div>
         }
       />

@@ -112,7 +112,44 @@ export type InstructorDetail = {
   courses: InstructorCourse[];
 };
 
+export type InstructorRow = {
+  id: string;
+  name: string;
+  email: string;
+  employeeNo: string;
+  specialization: string;
+  bio: string;
+  joinedAt: Date;
+  batchCount: number;
+};
+
 // ---------------------------------------------------------------- queries
+
+/** All instructors for the management list. */
+export async function getInstructors(): Promise<InstructorRow[]> {
+  const rows = await db.instructor.findMany({
+    orderBy: { employeeNo: "asc" },
+    select: {
+      id: true,
+      employeeNo: true,
+      specialization: true,
+      bio: true,
+      joinedAt: true,
+      user: { select: { name: true, email: true } },
+      _count: { select: { batches: true } },
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.user.name,
+    email: r.user.email,
+    employeeNo: r.employeeNo,
+    specialization: r.specialization,
+    bio: r.bio,
+    joinedAt: r.joinedAt,
+    batchCount: r._count.batches,
+  }));
+}
 
 /** Single instructor profile + computed performance + assigned batches/courses. */
 export async function getInstructorDetail(instructorId: string): Promise<InstructorDetail | null> {

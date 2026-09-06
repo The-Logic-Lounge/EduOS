@@ -1,85 +1,96 @@
 import Link from "next/link";
 import { requirePageRole } from "@/lib/page-auth";
-import { getInstructors } from "@/lib/instructors";
+import { getBatches } from "@/lib/batches";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
 import Table, { THead, TR, TH, TD } from "@/components/ui/Table";
-import { fmtDate } from "@/components/instructor/perf";
+import { BATCH_STATUS_VARIANT, fmtDate, fmtPct } from "@/components/instructor/perf";
+import { Score } from "../ui";
 
 export const dynamic = "force-dynamic";
 
-export default async function ManagementInstructors() {
+export default async function ManagementBatches() {
   await requirePageRole("MANAGEMENT");
-  const instructors = await getInstructors();
+  const batches = await getBatches();
 
   return (
     <div className="pb-16">
       <PageHeader
-        title="Instructors"
-        subtitle="Teaching staff with assigned batches and contact details."
+        title="Batches"
+        subtitle="Cohorts running across courses and instructors."
         right={
           <div className="flex items-end gap-6">
             <div className="text-right">
-              <div className="stat">Staff</div>
+              <div className="stat">Cohorts</div>
               <div className="mono mt-1.5 text-[2.25rem] leading-none font-medium text-ink">
-                {instructors.length}
+                {batches.length}
               </div>
             </div>
             <Link
-              href="/management/instructors/new"
+              href="/management/batches/new"
               className="inline-flex h-10 items-center rounded-sm border border-accent bg-accent px-5 text-sm font-medium text-white transition-colors hover:bg-accent-ink hover:border-accent-ink"
             >
-              Add instructor
+              Add batch
             </Link>
           </div>
         }
       />
 
-      {instructors.length === 0 ? (
+      {batches.length === 0 ? (
         <EmptyState
-          title="No instructors"
-          description="Seed the database or register a new instructor to populate the staff list."
+          title="No batches"
+          description="Seed the database or create a new batch to start enrolments."
         />
       ) : (
         <Card
-          label="Staff roster"
-          right={<span className="mono text-xs text-ink-3">{instructors.length}</span>}
+          label="Cohort list"
+          right={<span className="mono text-xs text-ink-3">{batches.length}</span>}
         >
-          <Table className="min-w-[56rem]">
+          <Table className="min-w-[64rem]">
             <THead>
               <TR>
-                <TH>Employee no</TH>
+                <TH>Code</TH>
                 <TH>Name</TH>
-                <TH>Specialization</TH>
-                <TH>Email</TH>
-                <TH className="text-right">Batches</TH>
-                <TH>Joined</TH>
+                <TH>Course</TH>
+                <TH>Instructor</TH>
+                <TH>Schedule</TH>
+                <TH className="text-right">Enrolled</TH>
+                <TH>Status</TH>
+                <TH className="text-right">Performance</TH>
                 <TH className="text-right">Actions</TH>
               </TR>
             </THead>
             <tbody>
-              {instructors.map((i) => (
-                <TR key={i.id} className="relative">
+              {batches.map((b) => (
+                <TR key={b.id} className="relative">
                   <TD className="mono text-ink">
                     <Link
-                      href={`/management/instructors/${i.id}`}
+                      href={`/instructor/batches/${b.id}`}
                       className="transition-colors hover:text-accent after:absolute after:inset-0"
                     >
-                      {i.employeeNo}
+                      {b.code}
                     </Link>
                   </TD>
-                  <TD className="font-medium text-ink">{i.name}</TD>
-                  <TD>
-                    <Badge>{i.specialization}</Badge>
+                  <TD className="font-medium text-ink">{b.name}</TD>
+                  <TD className="text-sm text-ink-2">{b.courseCode}</TD>
+                  <TD className="text-sm text-ink-2">{b.instructorName}</TD>
+                  <TD className="text-xs">{b.schedule}</TD>
+                  <TD className="mono text-right">
+                    {b.enrolled}/{b.capacity}
                   </TD>
-                  <TD className="text-sm text-ink-2">{i.email}</TD>
-                  <TD className="mono text-right">{i.batchCount}</TD>
-                  <TD className="mono text-[0.6875rem] whitespace-nowrap">{fmtDate(i.joinedAt)}</TD>
+                  <TD>
+                    <Badge variant={BATCH_STATUS_VARIANT[b.status as keyof typeof BATCH_STATUS_VARIANT]}>
+                      {b.status}
+                    </Badge>
+                  </TD>
+                  <TD className="text-right">
+                    <Score value={b.perf.overall} sampleSize={b.perf.sampleSize} />
+                  </TD>
                   <TD className="text-right">
                     <Link
-                      href={`/management/instructors/${i.id}/edit`}
+                      href={`/management/batches/${b.id}/edit`}
                       className="relative z-10 inline-flex h-8 items-center rounded-sm border border-hairline-2 bg-surface px-3 text-xs font-medium text-ink transition-colors hover:border-accent hover:text-accent"
                     >
                       Edit
