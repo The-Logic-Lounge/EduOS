@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requirePageRole } from "@/lib/page-auth";
 import { courseRows } from "@/lib/management";
 import PageHeader from "@/components/ui/PageHeader";
@@ -53,8 +54,16 @@ export default async function ManagementCourses() {
               <tbody>
                 {ranked.map((c) => (
                   <TR key={c.id}>
-                    <TD className="mono text-ink">{c.code}</TD>
-                    <TD className="font-medium text-ink">{c.title}</TD>
+                    <TD className="mono text-ink">
+                      <Link href={`/courses/${c.id}`} className="text-ink hover:text-accent">
+                        {c.code}
+                      </Link>
+                    </TD>
+                    <TD className="font-medium text-ink">
+                      <Link href={`/courses/${c.id}`} className="text-ink hover:text-accent">
+                        {c.title}
+                      </Link>
+                    </TD>
                     <TD><Badge>{c.level}</Badge></TD>
                     <TD className="mono text-right">{c.durationWeeks}</TD>
                     <TD className="mono text-right">{c.modules}</TD>
@@ -72,7 +81,9 @@ export default async function ManagementCourses() {
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {ranked.map((c) => (
               <Card key={c.id} label={c.code} right={<Score value={c.perf.overall} sampleSize={c.perf.sampleSize} />}>
-                <h3 className="font-display text-lg leading-tight tracking-tight text-ink">{c.title}</h3>
+                <Link href={`/courses/${c.id}`} className="group">
+                  <h3 className="font-display text-lg leading-tight tracking-tight text-ink group-hover:text-accent">{c.title}</h3>
+                </Link>
                 <p className="mt-1 text-xs text-ink-3">
                   {c.modules} modules · {c.batches} batches · {c.students} students
                 </p>

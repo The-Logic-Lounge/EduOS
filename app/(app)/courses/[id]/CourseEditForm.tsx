@@ -1,18 +1,37 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
-import Badge from "@/components/ui/Badge";
 
-type ModuleRow = { title: string; description: string; objectives: string; durationHours: string };
-type SkillOption = { id: string; name: string; category: string };
-type SkillSelection = { skillId: string; name: string; targetLevel: string };
+type ModuleRow = {
+  id?: string;
+  title: string;
+  description: string;
+  objectives: string;
+  durationHours: string;
+};
 
-const EMPTY_MODULE: ModuleRow = { title: "", description: "", objectives: "", durationHours: "8" };
+type CourseData = {
+  id: string;
+  code: string;
+  title: string;
+  description: string;
+  level: string;
+  durationWeeks: number;
+  modules: {
+    id: string;
+    order: number;
+    title: string;
+    description: string;
+    objectives: string[];
+    durationHours: number;
+  }[];
+};
+
 const LEVELS = ["Beginner", "Intermediate", "Advanced"];
-const TARGET_LEVELS = ["BEGINNER", "INTERMEDIATE", "ADVANCED", "EXPERT"];
+const EMPTY_MODULE: ModuleRow = { title: "", description: "", objectives: "", durationHours: "8" };
 
 const field =
   "w-full border border-hairline-2 rounded-sm bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none";
@@ -21,24 +40,27 @@ function Label({ children }: { children: React.ReactNode }) {
   return <span className="stat mb-1.5 block">{children}</span>;
 }
 
-export default function CourseForm() {
+export default function CourseEditForm({ course }: { course: CourseData }) {
   const router = useRouter();
-  const [form, setForm] = useState({ code: "", title: "", description: "", level: LEVELS[0], durationWeeks: "12" });
-  const [modules, setModules] = useState<ModuleRow[]>([{ ...EMPTY_MODULE }]);
-  const [skills, setSkills] = useState<SkillSelection[]>([]);
-  const [allSkills, setAllSkills] = useState<SkillOption[]>([]);
-  const [selectedSkillId, setSelectedSkillId] = useState("");
+  const [form, setForm] = useState({
+    code: course.code,
+    title: course.title,
+    description: course.description,
+    level: course.level,
+    durationWeeks: String(course.durationWeeks),
+  });
+  const [modules, setModules] = useState<ModuleRow[]>(
+    course.modules.map((m) => ({
+      id: m.id,
+      title: m.title,
+      description: m.description,
+      objectives: m.objectives.join("\n"),
+      durationHours: String(m.durationHours),
+    })),
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/skills")
-      .then((r) => r.json())
-      .then((json) => {
-        if (json.success && Array.isArray(json.data)) setAllSkills(json.data);
-      })
-      .catch(() => {});
-  }, []);
+  const [success, setSuccess] = useState(false);
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -46,37 +68,20 @@ export default function CourseForm() {
   const setModule = (i: number, k: keyof ModuleRow, v: string) =>
     setModules((ms) => ms.map((m, j) => (j === i ? { ...m, [k]: v } : m)));
 
-  function addSkill() {
-    if (!selectedSkillId) return;
-    if (skills.some((s) => s.skillId === selectedSkillId)) return;
-    const opt = allSkills.find((s) => s.id === selectedSkillId);
-    if (!opt) return;
-    setSkills((prev) => [...prev, { skillId: opt.id, name: opt.name, targetLevel: "INTERMEDIATE" }]);
-    setSelectedSkillId("");
-  }
-
-  function removeSkill(skillId: string) {
-    setSkills((prev) => prev.filter((s) => s.skillId !== skillId));
-  }
-
-  function setSkillLevel(skillId: string, level: string) {
-    setSkills((prev) => prev.map((s) => (s.skillId === skillId ? { ...s, targetLevel: level } : s)));
-  }
-
-  const availableSkills = allSkills.filter((s) => !skills.some((sel) => sel.skillId === s.id));
-
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setError(null);
+    setSuccess(false);
     try {
-      const res = await fetch("/api/courses", {
-        method: "POST",
+      const res = await fetch(`/api/courses/${course.id}`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
           durationWeeks: Number(form.durationWeeks),
           modules: modules.map((m) => ({
+            id: m.id,
             title: m.title.trim(),
             description: m.description.trim(),
             durationHours: Number(m.durationHours),
@@ -85,30 +90,30 @@ export default function CourseForm() {
               .map((o) => o.trim())
               .filter(Boolean),
           })),
-          skills: skills.map((s) => ({ skillId: s.skillId, targetLevel: s.targetLevel })),
         }),
       });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.error ?? `Failed (${res.status})`);
-      router.push(`/courses/${json.data.id}`);
+      setSuccess(true);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create the course");
+      setError(err instanceof Error ? err.message : "Could not save changes");
+    } finally {
       setSaving(false);
     }
   }
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-8">
-      <Card label="Course">
+      <Card label="Course details">
         <div className="grid gap-5 md:grid-cols-[10rem_1fr]">
           <label>
             <Label>Code</Label>
-            <input required value={form.code} onChange={set("code")} placeholder="WD-401" className={`${field} mono uppercase`} />
+            <input required value={form.code} onChange={set("code")} className={`${field} mono uppercase`} />
           </label>
           <label>
             <Label>Title</Label>
-            <input required value={form.title} onChange={set("title")} placeholder="Full-Stack Web Development" className={field} />
+            <input required value={form.title} onChange={set("title")} className={field} />
           </label>
           <label className="md:col-span-2">
             <Label>Description</Label>
@@ -137,67 +142,13 @@ export default function CourseForm() {
         </div>
       </Card>
 
-      {/* Skill mapping */}
-      <Card
-        label="Target skills"
-        right={<span className="mono text-xs text-ink-3">{skills.length} mapped</span>}
-      >
-        <p className="mb-4 text-sm text-ink-3">
-          Map skills that this course teaches. These feed into the AI Skill Passport and Career Path features.
-        </p>
-
-        {skills.length > 0 && (
-          <ul className="mb-4 flex flex-col gap-3">
-            {skills.map((s) => (
-              <li key={s.skillId} className="flex items-center gap-3 border-b border-hairline pb-3 last:border-0 last:pb-0">
-                <span className="flex-1 text-sm text-ink">{s.name}</span>
-                <select
-                  value={s.targetLevel}
-                  onChange={(e) => setSkillLevel(s.skillId, e.target.value)}
-                  className={`${field} max-w-[10rem]`}
-                >
-                  {TARGET_LEVELS.map((l) => (
-                    <option key={l} value={l}>{l}</option>
-                  ))}
-                </select>
-                <Button variant="ghost" size="sm" type="button" onClick={() => removeSkill(s.skillId)}>
-                  Remove
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {availableSkills.length > 0 ? (
-          <div className="flex items-center gap-3">
-            <select
-              value={selectedSkillId}
-              onChange={(e) => setSelectedSkillId(e.target.value)}
-              className={`${field} max-w-xs`}
-            >
-              <option value="">Select a skill…</option>
-              {availableSkills.map((s) => (
-                <option key={s.id} value={s.id}>{s.name} ({s.category})</option>
-              ))}
-            </select>
-            <Button variant="secondary" size="sm" type="button" onClick={addSkill} disabled={!selectedSkillId}>
-              + Add skill
-            </Button>
-          </div>
-        ) : (
-          <p className="text-xs text-ink-3">
-            {allSkills.length === 0 ? "No skills available in the database." : "All available skills have been mapped."}
-          </p>
-        )}
-      </Card>
-
       <Card
         label="Curriculum modules"
         right={<span className="mono text-xs text-ink-3">{modules.length}</span>}
       >
         <div className="flex flex-col gap-8">
           {modules.map((m, i) => (
-            <div key={i} className="grid gap-4 border-l-2 border-hairline-2 pl-5 md:grid-cols-[1fr_1fr]">
+            <div key={`${m.id ?? "new"}-${i}`} className="grid gap-4 border-l-2 border-hairline-2 pl-5 md:grid-cols-[1fr_1fr]">
               <div className="flex items-baseline justify-between md:col-span-2">
                 <span className="mono text-sm text-ink-3">Module {String(i + 1).padStart(2, "0")}</span>
                 {modules.length > 1 && (
@@ -255,12 +206,20 @@ export default function CourseForm() {
       </Card>
 
       {error && <p className="border-l-2 border-danger bg-danger-soft px-4 py-3 text-sm text-danger">{error}</p>}
+      {success && <p className="border-l-2 border-success bg-success-soft px-4 py-3 text-sm text-success">Changes saved successfully.</p>}
 
       <div className="flex items-center gap-4">
         <Button type="submit" disabled={saving}>
-          {saving ? "Creating…" : "Create course"}
+          {saving ? "Saving…" : "Save changes"}
         </Button>
-        <span className="text-xs text-ink-3">Course and every module are written in one transaction.</span>
+        <Button
+          variant="secondary"
+          type="button"
+          onClick={() => router.push(`/courses/${course.id}`)}
+        >
+          Cancel
+        </Button>
+        <span className="text-xs text-ink-3">Course and every module are updated in one transaction.</span>
       </div>
     </form>
   );
