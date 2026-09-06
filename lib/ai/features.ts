@@ -908,7 +908,56 @@ function fallbackFromClassification(
   }
 }
 
+const SCHEDULE_RE = /\b(schedule|timetable|timing|class\s*time|lecture\s*time|when\s+is|what\s+time|what\s+day|which\s+day|which\s+room|venue|class\s*room|classroom)\b/i;
+
 export async function managementIntelligence(question?: string): Promise<Feature<ManagementIntelligence>> {
+  // Timetable/schedule questions are outside the management domain — delegate to the
+  // scheduling pipeline which has its own tools (listSchedules, scheduleOverview, etc.)
+  // and wraps the answer in the ManagementIntelligence shape for the UI.
+  if (question && SCHEDULE_RE.test(question)) {
+    const sched = await askSchedule(question);
+
+    // The scheduling model sometimes returns its answer as a JSON blob rather
+    // than plain text. Unwrap it so the management panel renders cleanly.
+    let plainAnswer = sched.data.answer;
+    let tableRows: Record<string, unknown>[] = sched.data.table;
+    let bulletLines = sched.data.bullets;
+    try {
+      const parsed = JSON.parse(sched.data.answer);
+      if (parsed && typeof parsed === "object") {
+        if (typeof parsed.answer === "string") plainAnswer = parsed.answer;
+        if (Array.isArray(parsed.table)) tableRows = parsed.table;
+        if (Array.isArray(parsed.bullets)) bulletLines = parsed.bullets;
+      }
+    } catch { /* not JSON — use raw answer */ }
+
+    // Build a human-readable report from table rows when bullets are absent.
+    let reportText = bulletLines.length > 0
+      ? bulletLines.join("\n")
+      : plainAnswer;
+    if (tableRows.length > 0 && bulletLines.length === 0) {
+      const lines = tableRows.map((r) => {
+        const day = String(r.day ?? "").toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
+        const time = r.startTime && r.endTime ? `${r.startTime}–${r.endTime}` : "";
+        const parts = [day, time, r.instructor, r.classroom, r.building].filter(Boolean);
+        return parts.join(" · ");
+      });
+      reportText = [plainAnswer, ...lines].join("\n");
+    }
+
+    return {
+      source: sched.source,
+      reason: sched.reason,
+      ungrounded: sched.ungrounded,
+      data: {
+        ...ManagementSchema.parse({}),
+        kind: "report",
+        answer: plainAnswer,
+        report: reportText,
+      },
+    };
+  }
+
   const ctx = await buildInstituteContext().catch(() => null);
   if (!ctx) {
     return {
