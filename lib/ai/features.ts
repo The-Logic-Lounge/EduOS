@@ -10,7 +10,7 @@ import { buildInstituteContext } from "./context/institute";
 import { TOOL_SPECS, runTool } from "./tools";
 import { SKILL_PASSPORT_PROMPT, PROMPT_VERSION as V_PASSPORT } from "./prompts/skill-passport";
 import { CAREER_PATH_PROMPT, PROMPT_VERSION as V_CAREER } from "./prompts/career-path";
-import { COPILOT_ANALYSIS_PROMPT, COPILOT_GENERATE_PROMPT, PROMPT_VERSION as V_COPILOT } from "./prompts/copilot";
+import { COPILOT_ANALYSIS_PROMPT, COPILOT_GENERATE_PROMPT, COPILOT_CHAT_PROMPT, COPILOT_STUDENT_PROMPT, PROMPT_VERSION as V_COPILOT } from "./prompts/copilot";
 import { MANAGEMENT_PROMPT, PROMPT_VERSION as V_MGMT } from "./prompts/management";
 import { COMMAND_CENTER_PROMPT, PROMPT_VERSION as V_CMD } from "./prompts/command-center";
 import { classify, type Classification } from "./classify";
@@ -382,6 +382,102 @@ export async function copilotGenerate(batchId: string, kind: GenerateKind): Prom
   if (!res.ok) return noAi(res.reason);
 
   await writeCache("copilot-generate", "batch", cacheId, res.data);
+  return { source: "ai", data: res.data };
+}
+
+// ----- copilot Q&A chat
+
+const CopilotChatSchema = z.object({
+  insufficient_data: z.boolean().default(false),
+  answer: z.string().default(""),
+  data: z.record(z.unknown()).nullable().default(null),
+  suggestions: z.array(z.string()).default([]),
+});
+export type CopilotChat = z.infer<typeof CopilotChatSchema>;
+
+export async function copilotChat(batchId: string, question: string): Promise<Feature<CopilotChat>> {
+  const q = (question ?? "").trim();
+  const unavailable = (reason: string): Feature<CopilotChat> => ({
+    source: "fallback",
+    reason,
+    data: { insufficient_data: true, answer: "AI service is unavailable.", data: null, suggestions: [] },
+  });
+
+  if (!q) return unavailable("empty_question");
+  if (!aiEnabled()) return unavailable("ai_disabled");
+
+  const ctx = await buildBatchContext(batchId).catch(() => null);
+  if (!ctx) return unavailable("no_batch");
+
+  const cacheId = `${batchId}:chat:${q.slice(0, 120)}`;
+  const cachedRow = await readCache("copilot-chat", "batch", cacheId, CopilotChatSchema);
+  if (cachedRow) return { source: "ai", data: cachedRow };
+
+  const res = await chatJSON({
+    system: COPILOT_CHAT_PROMPT,
+    user: `Instructor asks: ${q}\n\n${ctxJSON("batch", ctx)}`,
+    schema: CopilotChatSchema,
+    temperature: 0.3,
+  });
+  if (!res.ok) return unavailable(res.reason);
+
+  await writeCache("copilot-chat", "batch", cacheId, res.data);
+  return { source: "ai", data: res.data };
+}
+
+// ----- copilot student analysis
+
+const CopilotStudentSchema = z.object({
+  insufficient_data: z.boolean().default(false),
+  student: z.string().default(""),
+  summary: z.string().default(""),
+  strengths: z.array(z.string()).default([]),
+  weaknesses: z.array(z.string()).default([]),
+  recommendations: z.array(z.string()).default([]),
+  comparison: z.string().default(""),
+});
+export type CopilotStudentAnalysis = z.infer<typeof CopilotStudentSchema>;
+
+export async function copilotStudentAnalysis(
+  batchId: string,
+  studentId: string,
+): Promise<Feature<CopilotStudentAnalysis>> {
+  const unavailable = (reason: string): Feature<CopilotStudentAnalysis> => ({
+    source: "fallback",
+    reason,
+    data: {
+      insufficient_data: true,
+      student: "",
+      summary: "Unable to analyse student.",
+      strengths: [],
+      weaknesses: [],
+      recommendations: [],
+      comparison: "",
+    },
+  });
+
+  if (!aiEnabled()) return unavailable("ai_disabled");
+
+  const ctx = await buildBatchContext(batchId).catch(() => null);
+  if (!ctx) return unavailable("no_batch");
+
+  const student = ctx.students.find((s) => s.rollNo === studentId || s.name.toLowerCase().includes(studentId.toLowerCase()));
+  if (!student) return unavailable("student_not_found");
+
+  const cacheId = `${batchId}:student:${studentId}`;
+  const cachedRow = await readCache("copilot-student", "batch", cacheId, CopilotStudentSchema);
+  if (cachedRow) return { source: "ai", data: cachedRow };
+
+  const studentCtx = { ...ctx, targetStudent: student };
+  const res = await chatJSON({
+    system: COPILOT_STUDENT_PROMPT,
+    user: ctxJSON("batch+student", studentCtx),
+    schema: CopilotStudentSchema,
+    temperature: 0.3,
+  });
+  if (!res.ok) return unavailable(res.reason);
+
+  await writeCache("copilot-student", "batch", cacheId, res.data);
   return { source: "ai", data: res.data };
 }
 

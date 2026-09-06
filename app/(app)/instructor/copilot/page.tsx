@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requirePageRole } from "@/lib/page-auth";
-import { batchPerformance, moduleWeakness } from "@/lib/analytics";
+import { batchPerformance, moduleWeakness, studentBatchPerformance } from "@/lib/analytics";
 import PageHeader from "@/components/ui/PageHeader";
 import EmptyState from "@/components/ui/EmptyState";
 import StatTile from "@/components/ui/StatTile";
@@ -39,13 +39,33 @@ export default async function CopilotPage({
   }
 
   const selected = batches.find((b) => b.id === selectedParam) ?? batches[0];
-  const [perf, weak] = await Promise.all([batchPerformance(selected.id), moduleWeakness(selected.id)]);
+  const [perf, weak, enrollments] = await Promise.all([
+    batchPerformance(selected.id),
+    moduleWeakness(selected.id),
+    db.enrollment.findMany({
+      where: { batchId: selected.id },
+      select: { student: { select: { id: true, rollNo: true, user: { select: { name: true } } } } },
+    }),
+  ]);
+
+  // Build student list with performance
+  const studentsWithPerf = await Promise.all(
+    enrollments.map(async (e) => {
+      const p = await studentBatchPerformance(e.student.id, selected.id);
+      return {
+        name: e.student.user.name,
+        rollNo: e.student.rollNo,
+        overall: p.overall,
+      };
+    }),
+  );
+  const sortedStudents = studentsWithPerf.sort((a, b) => b.overall - a.overall);
 
   return (
     <>
       <PageHeader
         title="AI Instructor Copilot"
-        subtitle="Class analysis and teaching material, grounded in this batch's own attendance, assignments and assessments."
+        subtitle="Class analysis, teaching material, and Q&A — grounded in this batch's actual attendance, assignments and assessments."
         right={<span className="mono text-sm text-ink-3">{selected.code}</span>}
       />
 
@@ -75,7 +95,12 @@ export default async function CopilotPage({
         <StatTile label="Attendance" value={fmtPct(perf.attendancePct)} className="rounded-none border-0" />
       </div>
 
-      <CopilotPanel batchId={selected.id} batchCode={selected.code} fallbackWeak={weak} />
+      <CopilotPanel
+        batchId={selected.id}
+        batchCode={selected.code}
+        fallbackWeak={weak}
+        students={sortedStudents}
+      />
     </>
   );
 }
