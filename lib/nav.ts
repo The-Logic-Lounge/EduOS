@@ -9,6 +9,7 @@ export const STUDENT_NAV: NavItem[] = [
   { href: "/student/attendance", label: "Attendance" },
   { href: "/student/assessments", label: "Assessments" },
   { href: "/student/assignments", label: "Assignments" },
+  { href: "/student/timetable", label: "Timetable" },
   { href: "/student/passport", label: "Skill Passport" },
   { href: "/student/career", label: "Career Path" },
 ];
@@ -16,6 +17,7 @@ export const STUDENT_NAV: NavItem[] = [
 export const INSTRUCTOR_NAV: NavItem[] = [
   { href: "/instructor", label: "Dashboard" },
   { href: "/instructor/batches", label: "My Batches" },
+  { href: "/instructor/timetable", label: "Timetable" },
   { href: "/instructor/copilot", label: "AI Copilot" },
   { href: "/courses", label: "Courses" },
 ];
@@ -27,6 +29,7 @@ export const MANAGEMENT_NAV: NavItem[] = [
   { href: "/management/courses", label: "Courses" },
   { href: "/management/intelligence", label: "AI Intelligence" },
   { href: "/management/ask", label: "Ask Edu OS" },
+  { href: "/management/timetable", label: "Timetable" },
 ];
 
 export const navFor = (role: Role): NavItem[] =>

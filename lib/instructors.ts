@@ -1,14 +1,12 @@
 import { db } from "./db";
 import {
-  batchPerformance,
+  batchPerformanceMany,
   instructorPerformance,
-  studentBatchPerformance,
-  studentOverallPerformance,
-  coursePerformance,
+  studentBatchPerformanceMany,
+  meanPerf,
   type Perf,
   type InstructorPerf,
 } from "./analytics";
-import { mapLimit } from "./management";
 
 /**
  * Instructor management read model.
@@ -136,28 +134,27 @@ export async function getInstructorDetail(instructorId: string): Promise<Instruc
 
   const perf = await instructorPerformance(instructorId);
 
-  // Batch rows with performance
-  const batches: InstructorBatch[] = await Promise.all(
-    instructor.batches.map(async (b) => ({
-      id: b.id,
-      code: b.code,
-      name: b.name,
-      status: b.status as string,
-      courseId: b.course.id,
-      courseCode: b.course.code,
-      courseTitle: b.course.title,
-      schedule: b.schedule,
-      startDate: b.startDate,
-      endDate: b.endDate,
-      capacity: b.capacity,
-      enrolled: b._count.enrollments,
-      sessionsScheduled: b._count.sessions,
-      sessionsConducted: b.sessions.filter((s) => s.conducted).length,
-      perf: await batchPerformance(b.id),
-    })),
-  );
+  const batchPerfMap = await batchPerformanceMany(instructor.batches.map((b) => b.id));
 
-  // Aggregate courses: group batches by courseId
+  const batches: InstructorBatch[] = instructor.batches.map((b) => ({
+    id: b.id,
+    code: b.code,
+    name: b.name,
+    status: b.status as string,
+    courseId: b.course.id,
+    courseCode: b.course.code,
+    courseTitle: b.course.title,
+    schedule: b.schedule,
+    startDate: b.startDate,
+    endDate: b.endDate,
+    capacity: b.capacity,
+    enrolled: b._count.enrollments,
+    sessionsScheduled: b._count.sessions,
+    sessionsConducted: b.sessions.filter((s) => s.conducted).length,
+    perf: batchPerfMap.get(b.id) ?? { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0 },
+  }));
+
+  // Aggregate courses: group batches by courseId, derive perf from batchPerfMap
   const courseMap = new Map<
     string,
     { id: string; code: string; title: string; level: string; durationWeeks: number; batchIds: string[]; students: number }
@@ -177,8 +174,12 @@ export async function getInstructorDetail(instructorId: string): Promise<Instruc
     courseMap.set(b.course.id, row);
   }
 
-  const courses: InstructorCourse[] = await Promise.all(
-    [...courseMap.values()].map(async (c) => ({
+  const courses: InstructorCourse[] = [...courseMap.values()].map((c) => {
+    const perfs = c.batchIds
+      .map((id) => batchPerfMap.get(id))
+      .filter((p): p is NonNullable<typeof p> => !!p && p.sampleSize > 0);
+    const p = perfs.length > 0 ? meanPerf(perfs) : { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0 };
+    return {
       id: c.id,
       code: c.code,
       title: c.title,
@@ -186,9 +187,9 @@ export async function getInstructorDetail(instructorId: string): Promise<Instruc
       durationWeeks: c.durationWeeks,
       batches: c.batchIds.length,
       students: c.students,
-      perf: await coursePerformance(c.id),
-    })),
-  );
+      perf: p,
+    };
+  });
 
   return {
     profile: {
@@ -217,15 +218,18 @@ export async function getInstructorStudents(instructorId: string): Promise<Instr
     orderBy: { student: { rollNo: "asc" } },
   });
 
-  // Bounded fan-out to avoid Prisma pool exhaustion
-  return mapLimit(enrollments, 4, async (e) => ({
+  const perfMap = await studentBatchPerformanceMany(
+    enrollments.map((e) => ({ studentId: e.studentId, batchId: e.batch.id })),
+  );
+
+  return enrollments.map((e) => ({
     id: e.student.id,
     name: e.student.user.name,
     rollNo: e.student.rollNo,
     city: e.student.city,
     batchCode: e.batch.code,
     batchId: e.batch.id,
-    perf: await studentBatchPerformance(e.studentId, e.batchId),
+    perf: perfMap.get(`${e.studentId}:${e.batch.id}`) ?? { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0 },
   }));
 }
 
@@ -365,39 +369,39 @@ export async function getInstructorCourseProgress(
     courseMap.set(b.course.id, row);
   }
 
-  const results: InstructorCourseProgress[] = [];
-  for (const [courseId, course] of courseMap) {
-    const progress = await db.moduleProgress.groupBy({
-      by: ["moduleId", "status"],
-      where: { enrollment: { batchId: { in: course.batchIds } } },
-      _count: { _all: true },
-    });
+  const allBatchIds = batches.map((b) => b.id);
+  const allProgress = allBatchIds.length
+    ? await db.moduleProgress.groupBy({
+        by: ["moduleId", "status"],
+        where: { enrollment: { batchId: { in: allBatchIds } } },
+        _count: { _all: true },
+      })
+    : [];
 
-    const byModule = new Map<string, { COMPLETED: number; IN_PROGRESS: number; NOT_STARTED: number }>();
-    for (const p of progress) {
-      const row = byModule.get(p.moduleId) ?? { COMPLETED: 0, IN_PROGRESS: 0, NOT_STARTED: 0 };
-      row[p.status] = p._count._all;
-      byModule.set(p.moduleId, row);
-    }
-
-    results.push({
-      courseId,
-      courseTitle: course.title,
-      courseCode: course.code,
-      modules: course.modules.map((m) => {
-        const row = byModule.get(m.id) ?? { COMPLETED: 0, IN_PROGRESS: 0, NOT_STARTED: 0 };
-        return {
-          id: m.id,
-          title: m.title,
-          order: m.order,
-          completed: row.COMPLETED,
-          inProgress: row.IN_PROGRESS,
-          notStarted: row.NOT_STARTED,
-          total: row.COMPLETED + row.IN_PROGRESS + row.NOT_STARTED,
-        };
-      }),
-    });
+  const byModule = new Map<string, { COMPLETED: number; IN_PROGRESS: number; NOT_STARTED: number }>();
+  for (const p of allProgress) {
+    const row = byModule.get(p.moduleId) ?? { COMPLETED: 0, IN_PROGRESS: 0, NOT_STARTED: 0 };
+    row[p.status] = p._count._all;
+    byModule.set(p.moduleId, row);
   }
+
+  const results: InstructorCourseProgress[] = [...courseMap.entries()].map(([courseId, course]) => ({
+    courseId,
+    courseTitle: course.title,
+    courseCode: course.code,
+    modules: course.modules.map((m) => {
+      const row = byModule.get(m.id) ?? { COMPLETED: 0, IN_PROGRESS: 0, NOT_STARTED: 0 };
+      return {
+        id: m.id,
+        title: m.title,
+        order: m.order,
+        completed: row.COMPLETED,
+        inProgress: row.IN_PROGRESS,
+        notStarted: row.NOT_STARTED,
+        total: row.COMPLETED + row.IN_PROGRESS + row.NOT_STARTED,
+      };
+    }),
+  }));
 
   return results;
 }

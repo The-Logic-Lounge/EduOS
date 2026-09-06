@@ -13,6 +13,7 @@ import { CAREER_PATH_PROMPT, PROMPT_VERSION as V_CAREER } from "./prompts/career
 import { COPILOT_ANALYSIS_PROMPT, COPILOT_GENERATE_PROMPT, COPILOT_CHAT_PROMPT, COPILOT_STUDENT_PROMPT, PROMPT_VERSION as V_COPILOT } from "./prompts/copilot";
 import { MANAGEMENT_PROMPT, PROMPT_VERSION as V_MGMT } from "./prompts/management";
 import { COMMAND_CENTER_PROMPT, PROMPT_VERSION as V_CMD } from "./prompts/command-center";
+import { SCHEDULING_PROMPT, PROMPT_VERSION as V_SCHED } from "./prompts/scheduling";
 import { classify, type Classification } from "./classify";
 
 /**
@@ -1034,4 +1035,55 @@ export const PROMPT_VERSIONS = {
   copilot: V_COPILOT,
   management: V_MGMT,
   commandCenter: V_CMD,
+  scheduling: V_SCHED,
 } as const;
+
+// ------------------------------------------------------------------ scheduling
+
+const SchedulingSchema = z.object({
+  insufficient_data: z.boolean().default(false),
+  answer: z.string(),
+  table: z.array(z.record(z.unknown())).default([]),
+  bullets: z.array(z.string()).default([]),
+  toolsUsed: z.array(z.string()).default([]),
+});
+export type SchedulingAnswer = z.infer<typeof SchedulingSchema>;
+
+export async function askSchedule(question: string): Promise<Feature<SchedulingAnswer>> {
+  const q = (question ?? "").trim();
+  const unavailable = (reason: string): Feature<SchedulingAnswer> => ({
+    source: "fallback",
+    reason,
+    data: { insufficient_data: true, answer: INSUFFICIENT, table: [], bullets: [], toolsUsed: [] },
+  });
+
+  if (!q) return unavailable("empty_question");
+  if (!aiEnabled()) return unavailable("ai_disabled");
+
+  const subjectId = `sched:${q.slice(0, 200)}`;
+  const cachedRow = await readCache("scheduling", "institute", subjectId, SchedulingSchema);
+  if (cachedRow) return { source: "ai", data: cachedRow };
+
+  const res = await chatWithTools({
+    system: SCHEDULING_PROMPT,
+    user: q,
+    tools: TOOL_SPECS,
+    exec: runTool,
+  });
+  if (!res.ok) return unavailable(res.reason);
+
+  const results = res.data.used.map((u) => u.result);
+  const usable = results.some((r) => r && typeof r === "object" && !("error" in (r as object)));
+  if (!usable) return unavailable("tools_returned_only_errors");
+
+  const data: SchedulingAnswer = {
+    insufficient_data: false,
+    answer: res.data.answer,
+    table: [],
+    bullets: [],
+    toolsUsed: res.data.used.map((u) => u.name),
+  };
+  const { ungrounded } = groundedAgainst(data.answer, results);
+  await writeCache("scheduling", "institute", subjectId, data);
+  return { source: "ai", data, ungrounded };
+}

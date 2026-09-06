@@ -1,9 +1,11 @@
 import { db } from "./db";
 import {
   batchPerformance,
+  batchPerformanceMany,
   coursePerformance,
   instituteSummary,
   instructorPerformance,
+  meanPerf,
   skillGaps,
   studentOverallPerformance,
   type InstructorPerf,
@@ -77,13 +79,17 @@ export async function courseRows(): Promise<CourseRow[]> {
       level: true,
       durationWeeks: true,
       _count: { select: { modules: true, batches: true } },
-      batches: { select: { _count: { select: { enrollments: true } } } },
+      batches: { select: { id: true, _count: { select: { enrollments: true } } } },
       skills: { select: { targetLevel: true, skill: { select: { name: true } } } },
     },
   });
 
-  return Promise.all(
-    courses.map(async (c) => ({
+  const allBatchIds = courses.flatMap((c) => c.batches.map((b) => b.id));
+  const perfMap = await batchPerformanceMany(allBatchIds);
+
+  return courses.map((c) => {
+    const batchPerfs = c.batches.map((b) => perfMap.get(b.id)).filter((p): p is Perf => !!p && p.sampleSize > 0);
+    return {
       id: c.id,
       code: c.code,
       title: c.title,
@@ -92,10 +98,10 @@ export async function courseRows(): Promise<CourseRow[]> {
       modules: c._count.modules,
       batches: c._count.batches,
       students: c.batches.reduce((s, b) => s + b._count.enrollments, 0),
-      perf: await coursePerformance(c.id),
+      perf: batchPerfs.length > 0 ? meanPerf(batchPerfs) : { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0 },
       skills: c.skills.map((s) => ({ name: s.skill.name, targetLevel: s.targetLevel })),
-    })),
-  );
+    };
+  });
 }
 
 export async function batchRows(): Promise<BatchRow[]> {
@@ -112,18 +118,17 @@ export async function batchRows(): Promise<BatchRow[]> {
     },
   });
 
-  const rows = await Promise.all(
-    batches.map(async (b) => ({
-      id: b.id,
-      code: b.code,
-      name: b.name,
-      status: b.status as string,
-      course: b.course.title,
-      instructor: b.instructor.user.name,
-      students: b._count.enrollments,
-      perf: await batchPerformance(b.id),
-    })),
-  );
+  const perfMap = await batchPerformanceMany(batches.map((b) => b.id));
+  const rows = batches.map((b) => ({
+    id: b.id,
+    code: b.code,
+    name: b.name,
+    status: b.status as string,
+    course: b.course.title,
+    instructor: b.instructor.user.name,
+    students: b._count.enrollments,
+    perf: perfMap.get(b.id) ?? { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0 },
+  }));
   return rows.sort((a, b) => b.perf.overall - a.perf.overall);
 }
 
