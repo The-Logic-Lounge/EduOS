@@ -20,6 +20,7 @@ export default async function CourseCataloguePage() {
     include: {
       _count: { select: { modules: true, batches: true } },
       skills: { include: { skill: { select: { name: true } } } },
+      batches: { select: { _count: { select: { enrollments: true } } } },
     },
   });
 
@@ -51,7 +52,7 @@ export default async function CourseCataloguePage() {
         />
       ) : (
         <Card label="Programmes" right={<span className="mono text-xs text-ink-3">{courses.length}</span>}>
-          <Table className="min-w-[56rem]">
+          <Table className="min-w-[60rem]">
             <THead>
               <TR>
                 <TH>Code</TH>
@@ -61,45 +62,52 @@ export default async function CourseCataloguePage() {
                 <TH className="text-right">Modules</TH>
                 <TH>Skills covered</TH>
                 <TH className="text-right">Batches</TH>
+                <TH className="text-right">Students</TH>
                 <TH className="text-right">Performance</TH>
               </TR>
             </THead>
             <tbody>
-              {courses.map((c) => (
-                <TR key={c.id}>
-                  <TD>
-                    <Link href={`/courses/${c.id}`} className="mono text-ink hover:text-accent">
-                      {c.code}
-                    </Link>
-                  </TD>
-                  <TD className="text-ink">
-                    {c.title}
-                    <div className="max-w-sm truncate text-xs text-ink-3">{c.description}</div>
-                  </TD>
-                  <TD>
-                    <Badge>{c.level}</Badge>
-                  </TD>
-                  <TD className="mono text-right">{c.durationWeeks}</TD>
-                  <TD className="mono text-right">{c._count.modules}</TD>
-                  <TD>
-                    <div className="flex max-w-xs flex-wrap gap-1">
-                      {c.skills.slice(0, 4).map((s) => (
-                        <Badge key={s.skillId}>{s.skill.name}</Badge>
-                      ))}
-                      {c.skills.length > 4 && (
-                        <span className="mono self-center text-[0.6875rem] text-ink-3">
-                          +{c.skills.length - 4}
-                        </span>
-                      )}
-                      {c.skills.length === 0 && <span className="text-xs text-ink-3">—</span>}
-                    </div>
-                  </TD>
-                  <TD className="mono text-right">{c._count.batches}</TD>
-                  <TD className="text-right">
-                    <PerfBadge perf={perfs.get(c.id)!} />
-                  </TD>
-                </TR>
-              ))}
+              {courses.map((c) => {
+                const totalStudents = c.batches.reduce((s, b) => s + b._count.enrollments, 0);
+                return (
+                  <TR key={c.id}>
+                    <TD>
+                      <Link href={`/courses/${c.id}`} className="mono text-ink hover:text-accent">
+                        {c.code}
+                      </Link>
+                    </TD>
+                    <TD className="text-ink">
+                      <Link href={`/courses/${c.id}`} className="text-ink hover:text-accent">
+                        {c.title}
+                      </Link>
+                      <div className="max-w-sm truncate text-xs text-ink-3">{c.description}</div>
+                    </TD>
+                    <TD>
+                      <Badge>{c.level}</Badge>
+                    </TD>
+                    <TD className="mono text-right">{c.durationWeeks}</TD>
+                    <TD className="mono text-right">{c._count.modules}</TD>
+                    <TD>
+                      <div className="flex max-w-xs flex-wrap gap-1">
+                        {c.skills.slice(0, 4).map((s) => (
+                          <Badge key={s.skillId}>{s.skill.name}</Badge>
+                        ))}
+                        {c.skills.length > 4 && (
+                          <span className="mono self-center text-[0.6875rem] text-ink-3">
+                            +{c.skills.length - 4}
+                          </span>
+                        )}
+                        {c.skills.length === 0 && <span className="text-xs text-ink-3">—</span>}
+                      </div>
+                    </TD>
+                    <TD className="mono text-right">{c._count.batches}</TD>
+                    <TD className="mono text-right">{totalStudents}</TD>
+                    <TD className="text-right">
+                      <PerfBadge perf={perfs.get(c.id)!} />
+                    </TD>
+                  </TR>
+                );
+              })}
             </tbody>
           </Table>
         </Card>
