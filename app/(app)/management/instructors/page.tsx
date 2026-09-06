@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requirePageRole } from "@/lib/page-auth";
 import { instructorRows } from "@/lib/management";
 import PageHeader from "@/components/ui/PageHeader";
@@ -47,8 +48,16 @@ export default async function ManagementInstructors() {
             <tbody>
               {rows.map((i) => (
                 <TR key={i.id}>
-                  <TD className="mono text-ink">{i.employeeNo}</TD>
-                  <TD className="font-medium text-ink">{i.name}</TD>
+                  <TD className="mono text-ink">
+                    <Link href={`/management/instructors/${i.id}`} className="text-ink hover:text-accent">
+                      {i.employeeNo}
+                    </Link>
+                  </TD>
+                  <TD className="font-medium text-ink">
+                    <Link href={`/management/instructors/${i.id}`} className="text-ink hover:text-accent">
+                      {i.name}
+                    </Link>
+                  </TD>
                   <TD>{i.specialization}</TD>
                   <TD className="mono text-right">{i.batchCount}</TD>
                   <TD className="mono text-right">{i.studentCount}</TD>

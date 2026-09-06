@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requirePageRole } from "@/lib/page-auth";
-import { instructorPerformance, batchPerformance } from "@/lib/analytics";
+import { instructorPerformance, batchPerformance, studentBatchPerformance } from "@/lib/analytics";
+import { mapLimit } from "@/lib/management";
 import PageHeader from "@/components/ui/PageHeader";
 import StatTile from "@/components/ui/StatTile";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
 import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
-import { PerfBadge, BATCH_STATUS_VARIANT, fmtDate } from "@/components/instructor/perf";
+import { PerfBadge, BATCH_STATUS_VARIANT, fmtDate, fmtPct } from "@/components/instructor/perf";
 
 export const dynamic = "force-dynamic";
 
@@ -34,12 +35,26 @@ export default async function InstructorDashboard() {
   }
 
   const instructorId = user.instructorId;
+
+  // Fetch instructor profile
+  const instructor = await db.instructor.findUnique({
+    where: { id: instructorId },
+    select: { employeeNo: true, specialization: true, bio: true, joinedAt: true },
+  });
+
   const [perf, batches, sessions] = await Promise.all([
     instructorPerformance(instructorId),
     db.batch.findMany({
       where: { instructorId },
       orderBy: [{ status: "asc" }, { startDate: "desc" }],
-      include: { course: { select: { code: true, title: true } }, _count: { select: { enrollments: true } } },
+      include: {
+        course: { select: { code: true, title: true } },
+        _count: { select: { enrollments: true } },
+        enrollments: {
+          include: { student: { include: { user: { select: { name: true } } } } },
+          orderBy: { student: { rollNo: "asc" } },
+        },
+      },
     }),
     db.classSession.findMany({
       where: { batch: { instructorId } },
@@ -51,6 +66,27 @@ export default async function InstructorDashboard() {
   const batchPerf = new Map(
     await Promise.all(batches.map(async (b) => [b.id, await batchPerformance(b.id)] as const)),
   );
+
+  // Top students across all batches (bounded fan-out)
+  type StudentRow = {
+    name: string;
+    rollNo: string;
+    batchCode: string;
+    batchId: string;
+    perf: Awaited<ReturnType<typeof studentBatchPerformance>>;
+  };
+  const allEnrollments = batches.flatMap((b) =>
+    b.enrollments.map((e) => ({ ...e, batchCode: b.code, batchId: b.id })),
+  );
+  const topStudents: StudentRow[] = (
+    await mapLimit(allEnrollments, 4, async (e) => ({
+      name: e.student.user.name,
+      rollNo: e.student.rollNo,
+      batchCode: e.batchCode,
+      batchId: e.batchId,
+      perf: await studentBatchPerformance(e.studentId, e.batchId),
+    }))
+  ).sort((a, b) => b.perf.overall - a.perf.overall);
 
   // Workload: sessions per week, last 10 weeks that actually have classes.
   const weeks = new Map<number, { start: Date; total: number; conducted: number }>();
@@ -69,13 +105,42 @@ export default async function InstructorDashboard() {
     <>
       <PageHeader
         title={user.name}
-        subtitle="Your teaching load, conduct record and the performance of every batch you run."
+        subtitle={
+          instructor
+            ? `${instructor.specialization} · Your teaching load, conduct record and the performance of every batch you run.`
+            : "Your teaching load, conduct record and the performance of every batch you run."
+        }
         right={
-          <Link href="/instructor/copilot" className="stat text-accent underline-offset-4 hover:underline">
-            Open AI Copilot →
-          </Link>
+          <div className="flex items-center gap-4">
+            {instructor && (
+              <div className="text-right">
+                <div className="stat">Employee no</div>
+                <div className="mono mt-1 text-sm text-ink">{instructor.employeeNo}</div>
+              </div>
+            )}
+            <Link href="/instructor/copilot" className="stat text-accent underline-offset-4 hover:underline">
+              Open AI Copilot →
+            </Link>
+          </div>
         }
       />
+
+      {/* Profile info bar */}
+      {instructor && (
+        <dl className="mb-10 grid gap-x-8 gap-y-4 border-y border-hairline py-5 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            ["Specialization", instructor.specialization],
+            ["Employee no", instructor.employeeNo],
+            ["Joined", fmtDate(instructor.joinedAt)],
+            ["Bio", instructor.bio || "—"],
+          ].map(([label, value]) => (
+            <div key={label}>
+              <dt className="stat">{label}</dt>
+              <dd className="mt-1.5 text-sm text-ink-2 break-words">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
 
       <div className="grid gap-px bg-hairline sm:grid-cols-2 xl:grid-cols-3">
         <StatTile
@@ -181,6 +246,86 @@ export default async function InstructorDashboard() {
             {perf.classesScheduled - perf.classesConducted === 1 ? "" : "s"} did not run out of{" "}
             {perf.classesScheduled} scheduled.
           </p>
+        </Card>
+      </div>
+
+      {/* Student performance */}
+      <div className="mt-14">
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 className="font-display text-title text-ink">Student performance</h2>
+          <span className="mono text-sm text-ink-3">{topStudents.length} students</span>
+        </div>
+        <hr className="rule mt-4 mb-5" />
+
+        {topStudents.length === 0 ? (
+          <EmptyState title="No students" description="No students are enrolled in your batches yet." />
+        ) : (
+          <Card>
+            <Table className="min-w-[48rem]">
+              <THead>
+                <TR>
+                  <TH>Student</TH>
+                  <TH>Roll no</TH>
+                  <TH>Batch</TH>
+                  <TH className="text-right">Assessments</TH>
+                  <TH className="text-right">Assignments</TH>
+                  <TH className="text-right">Attendance</TH>
+                  <TH className="text-right">Performance</TH>
+                  <TH>Standing</TH>
+                </TR>
+              </THead>
+              <tbody>
+                {topStudents.slice(0, 25).map((s) => (
+                  <TR key={`${s.rollNo}-${s.batchId}`}>
+                    <TD className="text-ink">{s.name}</TD>
+                    <TD className="mono text-xs">{s.rollNo}</TD>
+                    <TD className="mono text-xs">{s.batchCode}</TD>
+                    <TD className="mono text-right">{s.perf.sampleSize ? `${s.perf.assessmentPct}%` : "—"}</TD>
+                    <TD className="mono text-right">{s.perf.sampleSize ? `${s.perf.assignmentPct}%` : "—"}</TD>
+                    <TD className="mono text-right">{s.perf.sampleSize ? `${s.perf.attendancePct}%` : "—"}</TD>
+                    <TD className="mono text-right text-ink">{s.perf.sampleSize ? fmtPct(s.perf.overall) : "—"}</TD>
+                    <TD>
+                      <PerfBadge perf={s.perf} />
+                    </TD>
+                  </TR>
+                ))}
+              </tbody>
+            </Table>
+            {topStudents.length > 25 && (
+              <p className="mt-4 border-t border-hairline pt-3 text-center text-xs text-ink-3">
+                Showing top 25 of {topStudents.length} students
+              </p>
+            )}
+          </Card>
+        )}
+      </div>
+
+      {/* Instructor performance breakdown */}
+      <div className="mt-14">
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 className="font-display text-title text-ink">Instructor performance</h2>
+        </div>
+        <hr className="rule mt-4 mb-5" />
+
+        <Card label="Performance breakdown">
+          <dl className="space-y-3 text-sm">
+            {[
+              ["Overall performance", perf.sampleSize ? fmtPct(perf.overall) : "—", `${perf.sampleSize.toLocaleString()} graded records`],
+              ["Conduct rate", `${perf.conductRate.toFixed(1)}%`, "Classes actually held"],
+              ["Own attendance", `${perf.ownAttendancePct.toFixed(1)}%`, "Sessions you were present for"],
+              ["Classes conducted", `${perf.classesConducted} / ${perf.classesScheduled}`, "Completed vs scheduled"],
+              ["Active batches", String(perf.batchCount), "Currently assigned"],
+              ["Total students", String(perf.studentCount), "Across all batches"],
+            ].map(([label, value, hint]) => (
+              <div key={label} className="flex items-baseline justify-between gap-4 border-b border-hairline pb-3 last:border-0 last:pb-0">
+                <div>
+                  <dt className="font-medium text-ink">{label}</dt>
+                  <dd className="mt-0.5 text-xs text-ink-3">{hint}</dd>
+                </div>
+                <span className="mono text-ink-2">{value}</span>
+              </div>
+            ))}
+          </dl>
         </Card>
       </div>
     </>
