@@ -1,13 +1,9 @@
 import { db } from "./db";
 import {
-  batchPerformance,
   batchPerformanceMany,
-  coursePerformance,
-  instituteSummary,
-  instructorPerformance,
+  instructorPerformanceMany,
   meanPerf,
-  skillGaps,
-  studentOverallPerformance,
+  studentOverallPerformanceMany,
   type InstructorPerf,
   type Perf,
 } from "./analytics";
@@ -61,7 +57,7 @@ export type StudentRow = {
 export type SkillStat = { name: string; category: string; attained: number; gaps: number };
 
 export type ManagementOverview = {
-  summary: Awaited<ReturnType<typeof instituteSummary>>;
+  summary: { students: number; instructors: number; courses: number; batches: number; perf: Perf };
   courses: CourseRow[];
   batches: BatchRow[];
   instructors: InstructorRow[];
@@ -143,15 +139,14 @@ export async function instructorRows(): Promise<InstructorRow[]> {
     },
   });
 
-  const rows = await Promise.all(
-    instructors.map(async (i) => ({
-      id: i.id,
-      name: i.user.name,
-      employeeNo: i.employeeNo,
-      specialization: i.specialization,
-      ...(await instructorPerformance(i.id)),
-    })),
-  );
+  const perfMap = await instructorPerformanceMany(instructors.map((i) => i.id));
+  const rows = instructors.map((i) => ({
+    id: i.id,
+    name: i.user.name,
+    employeeNo: i.employeeNo,
+    specialization: i.specialization,
+    ...(perfMap.get(i.id) ?? { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0, classesConducted: 0, classesScheduled: 0, conductRate: 0, ownAttendancePct: 0, batchCount: 0, studentCount: 0 }),
+  }));
   return rows.sort((a, b) => b.overall - a.overall);
 }
 
@@ -191,13 +186,14 @@ export async function studentRows(limit = 100): Promise<{ rows: StudentRow[]; to
     }),
   ]);
 
-  const rows = await mapLimit(students, 4, async (s) => ({
+  const perfMap = await studentOverallPerformanceMany(students.map((s) => s.id));
+  const rows = students.map((s) => ({
     id: s.id,
     name: s.user.name,
     rollNo: s.rollNo,
     city: s.city,
     batches: s.enrollments.map((e) => e.batch.code),
-    perf: await studentOverallPerformance(s.id),
+    perf: perfMap.get(s.id) ?? { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0 },
   }));
   return { rows, total };
 }
@@ -244,14 +240,95 @@ export async function attendanceDistribution() {
 }
 
 export async function managementOverview(): Promise<ManagementOverview> {
-  // Sequential on purpose. Each of these already fans out internally over courses,
-  // batches and instructors; running all six at once put ~100 queries in flight and
-  // every management page 500'd with Prisma P2024 (pool exhausted).
-  const summary = await instituteSummary();
-  const courses = await courseRows();
-  const batches = await batchRows();
-  const instructors = await instructorRows();
-  const attendance = await attendanceDistribution();
-  const skills = await skillStats();
+  // Fetch all batch IDs once, compute performance once, then derive every row from
+  // the same map. This cuts the query count from ~18 (three batchPerformanceMany
+  // calls of 3 queries each) to ~10.
+  const allBatches = await db.batch.findMany({
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      status: true,
+      courseId: true,
+      course: { select: { title: true } },
+      instructorId: true,
+      instructor: { select: { user: { select: { name: true } } } },
+      _count: { select: { enrollments: true } },
+    },
+  });
+
+  const perfMap = await batchPerformanceMany(allBatches.map((b) => b.id));
+
+  // Derive summary from the same perfMap
+  const [studentCount, instructorCount, courseCount] = await Promise.all([
+    db.student.count(),
+    db.instructor.count(),
+    db.course.count(),
+  ]);
+  const allPerfs = [...perfMap.values()].filter((p) => p.sampleSize > 0);
+  const perf = allPerfs.length > 0 ? meanPerf(allPerfs) : { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0 };
+  const summary = { students: studentCount, instructors: instructorCount, courses: courseCount, batches: allBatches.length, perf };
+
+  // Derive course rows from the same perfMap
+  const coursesRaw = await db.course.findMany({
+    orderBy: { code: "asc" },
+    select: {
+      id: true,
+      code: true,
+      title: true,
+      level: true,
+      durationWeeks: true,
+      _count: { select: { modules: true, batches: true } },
+      skills: { select: { targetLevel: true, skill: { select: { name: true } } } },
+    },
+  });
+  const batchIdsByCourse = new Map<string, string[]>();
+  for (const b of allBatches) {
+    const list = batchIdsByCourse.get(b.courseId) ?? [];
+    list.push(b.id);
+    batchIdsByCourse.set(b.courseId, list);
+  }
+  const studentsByCourse = new Map<string, number>();
+  for (const b of allBatches) {
+    studentsByCourse.set(b.courseId, (studentsByCourse.get(b.courseId) ?? 0) + b._count.enrollments);
+  }
+  const courses: CourseRow[] = coursesRaw.map((c) => {
+    const cBatchIds = batchIdsByCourse.get(c.id) ?? [];
+    const cPerfs = cBatchIds.map((id) => perfMap.get(id)).filter((p): p is Perf => !!p && p.sampleSize > 0);
+    return {
+      id: c.id,
+      code: c.code,
+      title: c.title,
+      level: c.level,
+      durationWeeks: c.durationWeeks,
+      modules: c._count.modules,
+      batches: c._count.batches,
+      students: studentsByCourse.get(c.id) ?? 0,
+      perf: cPerfs.length > 0 ? meanPerf(cPerfs) : { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0 },
+      skills: c.skills.map((s) => ({ name: s.skill.name, targetLevel: s.targetLevel })),
+    };
+  });
+
+  // Derive batch rows from the same perfMap
+  const batches: BatchRow[] = allBatches
+    .map((b) => ({
+      id: b.id,
+      code: b.code,
+      name: b.name,
+      status: b.status as string,
+      course: b.course.title,
+      instructor: b.instructor.user.name,
+      students: b._count.enrollments,
+      perf: perfMap.get(b.id) ?? { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0 },
+    }))
+    .sort((a, b) => b.perf.overall - a.perf.overall);
+
+  // Run remaining queries in parallel — pool pressure is low now
+  const [instructors, attendance, skills] = await Promise.all([
+    instructorRows(),
+    attendanceDistribution(),
+    skillStats(),
+  ]);
+
   return { summary, courses, batches, instructors, attendance, skills };
 }

@@ -85,9 +85,10 @@ async function testInstructorManagement(cookie) {
   const { body: studentsBody } = await apiGet(cookie, "/api/students?limit=1");
   const studentRow = (studentsBody?.data?.rows ?? studentsBody?.data?.students ?? [])[0];
 
-  // Try getting instructor from page links
-  const instPage = await pageCheck(cookie, "/management/instructors");
-  const idMatch = instPage.status === 200 ? (await fetch(BASE + "/management/instructors", { headers: { cookie } }).then(r => r.text())).match(/\/management\/instructors\/([^"]+)/)?.[1] : null;
+  // Try getting instructor from management overview API
+  const { body: overviewBody } = await apiGet(cookie, "/api/management/overview");
+  const instructors = overviewBody?.data?.instructors ?? [];
+  const idMatch = instructors[0]?.id ?? null;
 
   if (!idMatch) {
     log(false, "Could not extract instructor id from page — skipping detail tests");
@@ -251,10 +252,17 @@ async function testSecurity() {
   }
 
   // No cookie — API should return 401
-  for (const path of ["/api/instructors/test", "/api/courses", "/api/skills", "/api/ai/copilot"]) {
+  for (const path of ["/api/instructors/test", "/api/courses", "/api/skills"]) {
     const res = await fetch(BASE + path);
     log(res.status === 401 || res.status === 403, `Unauthenticated ${path} → ${res.status} (expected 401/403)`);
   }
+  // Copilot is POST-only; unauthenticated POST should return 401/403
+  const copilotUnauth = await fetch(BASE + "/api/ai/copilot", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ batchId: "test" }),
+  });
+  log(copilotUnauth.status === 401 || copilotUnauth.status === 403, `Unauthenticated /api/ai/copilot → ${copilotUnauth.status} (expected 401/403)`);
 }
 
 async function testRoleEnforcement() {

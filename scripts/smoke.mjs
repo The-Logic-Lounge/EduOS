@@ -11,23 +11,31 @@ const ROLES = {
 
 const PAGES = {
   STUDENT: ["/student", "/student/courses", "/student/attendance", "/student/assessments",
-            "/student/assignments", "/student/passport", "/student/career"],
-  INSTRUCTOR: ["/instructor", "/instructor/batches", "/instructor/copilot", "/courses", "/courses/new"],
+            "/student/assignments", "/student/passport", "/student/career", "/student/timetable"],
+  INSTRUCTOR: ["/instructor", "/instructor/batches", "/instructor/copilot", "/courses", "/courses/new", "/instructor/timetable"],
   MANAGEMENT: ["/management", "/management/students", "/management/students/new",
                "/management/instructors", "/management/courses",
-               "/management/intelligence", "/management/ask"],
+               "/management/intelligence", "/management/ask", "/management/timetable"],
 };
 
 const APIS = {
-  STUDENT: ["/api/student/overview"],
-  INSTRUCTOR: ["/api/instructor/batches"],
-  MANAGEMENT: ["/api/management/overview", "/api/management/students", "/api/students"],
+  STUDENT: ["/api/student/overview", "/api/schedule"],
+  INSTRUCTOR: ["/api/instructor/batches", "/api/schedule"],
+  MANAGEMENT: ["/api/management/overview", "/api/management/students", "/api/students", "/api/schedule", "/api/classrooms"],
 };
 
 const CRASH = /Application error|error occurred in the Server Components render|"digest"/;
 
 let failures = 0;
 const log = (ok, msg) => { if (!ok) failures++; console.log(`${ok ? "  ok  " : " FAIL "} ${msg}`); };
+
+const timedFetch = (url, opts = {}) => {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30_000);
+  return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(timer));
+};
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function login(role) {
   const res = await fetch(`${BASE}/api/auth/login`, {
@@ -55,7 +63,7 @@ async function run() {
 
     for (const path of PAGES[role]) {
       try {
-        const res = await fetch(BASE + path, { headers: { cookie }, redirect: "manual" });
+        const res = await timedFetch(BASE + path, { headers: { cookie }, redirect: "manual" });
         const body = res.status === 200 ? await res.text() : "";
         if (res.status >= 300 && res.status < 400) {
           const to = res.headers.get("location") ?? "";
@@ -70,23 +78,25 @@ async function run() {
       } catch (e) {
         log(false, `${path} — ${e.message}`);
       }
+      await sleep(500);
     }
 
     for (const path of APIS[role] ?? []) {
       try {
-        const res = await fetch(BASE + path, { headers: { cookie } });
+        const res = await timedFetch(BASE + path, { headers: { cookie } });
         const body = await res.json().catch(() => null);
         log(res.status === 200 && body?.success === true, `${path} → ${res.status} success=${body?.success}`);
       } catch (e) {
         log(false, `${path} — ${e.message}`);
       }
+      await sleep(500);
     }
   }
 
   // [id] routes are where crashes hide — a list page can be green while every detail 500s.
   try {
     const cookie = await login("MANAGEMENT");
-    const res = await fetch(`${BASE}/api/students?limit=1`, { headers: { cookie } });
+    const res = await timedFetch(`${BASE}/api/students?limit=1`, { headers: { cookie } });
     const body = await res.json();
     const id = (body?.data?.rows ?? body?.data?.students ?? [])[0]?.id;
     if (!id) {
@@ -99,11 +109,12 @@ async function run() {
         `/api/students/${id}/assessments`, `/api/students/${id}/assignments`,
         `/api/students/${id}/performance`, `/api/students/${id}/progress`,
       ]) {
-        const r = await fetch(BASE + path, { headers: { cookie } });
+        const r = await timedFetch(BASE + path, { headers: { cookie } });
         const t = await r.text();
         const isApi = path.startsWith("/api/");
         const okNow = r.status === 200 && (isApi ? JSON.parse(t || "{}").success === true : !CRASH.test(t));
         log(okNow, `${path} → ${r.status}${!isApi && r.status === 200 && CRASH.test(t) ? " (page crashed)" : ""}`);
+        await sleep(500);
       }
     }
   } catch (e) {

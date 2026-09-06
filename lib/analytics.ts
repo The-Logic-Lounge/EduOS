@@ -320,6 +320,61 @@ export async function instructorPerformance(instructorId: string): Promise<Instr
   };
 }
 
+export async function instructorPerformanceMany(
+  instructorIds: string[],
+): Promise<Map<string, InstructorPerf>> {
+  const out = new Map<string, InstructorPerf>();
+  if (instructorIds.length === 0) return out;
+
+  const batches = await db.batch.findMany({
+    where: { instructorId: { in: instructorIds } },
+    select: { id: true, instructorId: true, _count: { select: { enrollments: true } } },
+  });
+
+  const allBatchIds = batches.map((b) => b.id);
+  const batchesByInstructor = new Map<string, typeof batches>();
+  for (const b of batches) {
+    const list = batchesByInstructor.get(b.instructorId) ?? [];
+    list.push(b);
+    batchesByInstructor.set(b.instructorId, list);
+  }
+
+  const [sessions, perfMap] = await Promise.all([
+    allBatchIds.length
+      ? db.classSession.findMany({
+          where: { batchId: { in: allBatchIds } },
+          select: { batchId: true, conducted: true, instructorPresent: true },
+        })
+      : Promise.resolve([]),
+    batchPerformanceMany(allBatchIds),
+  ]);
+
+  const sessionsByBatch = new Map<string, { conducted: boolean; instructorPresent: boolean }[]>();
+  for (const s of sessions) {
+    const list = sessionsByBatch.get(s.batchId) ?? [];
+    list.push(s);
+    sessionsByBatch.set(s.batchId, list);
+  }
+
+  for (const iid of instructorIds) {
+    const iBatches = batchesByInstructor.get(iid) ?? [];
+    const iBatchIds = iBatches.map((b) => b.id);
+    const iSessions = iBatchIds.flatMap((id) => sessionsByBatch.get(id) ?? []);
+    const iPerfs = iBatchIds.map((id) => perfMap.get(id)).filter((p): p is Perf => !!p && p.sampleSize > 0);
+    const conducted = iSessions.filter((s) => s.conducted).length;
+    out.set(iid, {
+      ...meanPerf(iPerfs),
+      batchCount: iBatches.length,
+      studentCount: iBatches.reduce((s, b) => s + b._count.enrollments, 0),
+      classesConducted: conducted,
+      classesScheduled: iSessions.length,
+      conductRate: pct(conducted, iSessions.length),
+      ownAttendancePct: pct(iSessions.filter((s) => s.instructorPresent).length, iSessions.length),
+    });
+  }
+  return out;
+}
+
 export async function instituteSummary() {
   const [students, instructors, courses, batches, activeBatches] = await Promise.all([
     db.student.count(),
