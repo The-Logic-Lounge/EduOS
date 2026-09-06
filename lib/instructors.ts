@@ -137,23 +137,25 @@ export async function getInstructorDetail(instructorId: string): Promise<Instruc
   const perf = await instructorPerformance(instructorId);
 
   // Batch rows with performance
-  const batches: InstructorBatch[] = await mapLimit(instructor.batches, 4, async (b) => ({
-    id: b.id,
-    code: b.code,
-    name: b.name,
-    status: b.status as string,
-    courseId: b.course.id,
-    courseCode: b.course.code,
-    courseTitle: b.course.title,
-    schedule: b.schedule,
-    startDate: b.startDate,
-    endDate: b.endDate,
-    capacity: b.capacity,
-    enrolled: b._count.enrollments,
-    sessionsScheduled: b._count.sessions,
-    sessionsConducted: b.sessions.filter((s) => s.conducted).length,
-    perf: await batchPerformance(b.id),
-  }));
+  const batches: InstructorBatch[] = await Promise.all(
+    instructor.batches.map(async (b) => ({
+      id: b.id,
+      code: b.code,
+      name: b.name,
+      status: b.status as string,
+      courseId: b.course.id,
+      courseCode: b.course.code,
+      courseTitle: b.course.title,
+      schedule: b.schedule,
+      startDate: b.startDate,
+      endDate: b.endDate,
+      capacity: b.capacity,
+      enrolled: b._count.enrollments,
+      sessionsScheduled: b._count.sessions,
+      sessionsConducted: b.sessions.filter((s) => s.conducted).length,
+      perf: await batchPerformance(b.id),
+    })),
+  );
 
   // Aggregate courses: group batches by courseId
   const courseMap = new Map<
@@ -175,16 +177,18 @@ export async function getInstructorDetail(instructorId: string): Promise<Instruc
     courseMap.set(b.course.id, row);
   }
 
-  const courses: InstructorCourse[] = await mapLimit([...courseMap.values()], 4, async (c) => ({
-    id: c.id,
-    code: c.code,
-    title: c.title,
-    level: c.level,
-    durationWeeks: c.durationWeeks,
-    batches: c.batchIds.length,
-    students: c.students,
-    perf: await coursePerformance(c.id),
-  }));
+  const courses: InstructorCourse[] = await Promise.all(
+    [...courseMap.values()].map(async (c) => ({
+      id: c.id,
+      code: c.code,
+      title: c.title,
+      level: c.level,
+      durationWeeks: c.durationWeeks,
+      batches: c.batchIds.length,
+      students: c.students,
+      perf: await coursePerformance(c.id),
+    })),
+  );
 
   return {
     profile: {

@@ -107,7 +107,7 @@ export async function getCourseDetail(courseId: string): Promise<CourseDetail | 
 
   const perf = await coursePerformance(courseId);
   const batchPerfMap = new Map(
-    await mapLimit(course.batches, 4, async (b) => [b.id, await batchPerformance(b.id)] as const),
+    await Promise.all(course.batches.map(async (b) => [b.id, await batchPerformance(b.id)] as const)),
   );
 
   const modules: CourseModule[] = course.modules.map((m) => ({
