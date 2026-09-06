@@ -64,6 +64,16 @@ enum ProgressStatus {
   COMPLETED
 }
 
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
 model User {
   id           String      @id @default(cuid())
   email        String      @unique
@@ -101,7 +111,9 @@ model Instructor {
   bio            String
   joinedAt       DateTime
 
-  batches Batch[]
+  batches       Batch[]
+  availability  InstructorAvailability[]
+  schedules     Schedule[]
 }
 
 model Course {
@@ -154,6 +166,7 @@ model CourseSkill {
   targetLevel SkillLevel
 
   @@id([courseId, skillId])
+  @@index([courseId])
 }
 
 model ModuleSkill {
@@ -184,6 +197,7 @@ model Batch {
   sessions    ClassSession[]
   assignments Assignment[]
   assessments Assessment[]
+  schedules   Schedule[]
 }
 
 model Enrollment {
@@ -199,6 +213,8 @@ model Enrollment {
   progress ModuleProgress[]
 
   @@unique([studentId, batchId])
+  @@index([studentId])
+  @@index([batchId])
 }
 
 model ClassSession {
@@ -215,6 +231,7 @@ model ClassSession {
   attendance Attendance[]
 
   @@unique([batchId, date])
+  @@index([batchId])
 }
 
 model Attendance {
@@ -226,6 +243,8 @@ model Attendance {
   status    AttendanceStatus
 
   @@unique([sessionId, studentId])
+  @@index([sessionId])
+  @@index([studentId])
 }
 
 model Assignment {
@@ -240,6 +259,8 @@ model Assignment {
   dueDate     DateTime
 
   submissions Submission[]
+
+  @@index([batchId])
 }
 
 model Submission {
@@ -253,6 +274,8 @@ model Submission {
   submittedAt  DateTime?
 
   @@unique([assignmentId, studentId])
+  @@index([assignmentId])
+  @@index([studentId])
 }
 
 model Assessment {
@@ -267,6 +290,8 @@ model Assessment {
   scheduledAt DateTime
 
   results AssessmentResult[]
+
+  @@index([batchId])
 }
 
 model AssessmentResult {
@@ -278,6 +303,8 @@ model AssessmentResult {
   score        Int
 
   @@unique([assessmentId, studentId])
+  @@index([assessmentId])
+  @@index([studentId])
 }
 
 model ModuleProgress {
@@ -290,6 +317,7 @@ model ModuleProgress {
   completedAt  DateTime?
 
   @@unique([enrollmentId, moduleId])
+  @@index([enrollmentId])
 }
 
 model StudentSkill {
@@ -304,6 +332,8 @@ model StudentSkill {
   updatedAt     DateTime   @updatedAt
 
   @@unique([studentId, skillId])
+  @@index([studentId])
+  @@index([skillId])
 }
 
 // Cache for AI outputs so the demo is instant and survives an LLM outage.
@@ -317,4 +347,48 @@ model AiInsight {
   createdAt   DateTime @default(now())
 
   @@index([kind, subjectType, subjectId])
+}
+
+// Scheduling models --------------------------------------------------
+
+model Classroom {
+  id       String @id @default(cuid())
+  name     String @unique
+  building String
+  capacity Int
+  hasTech  Boolean @default(true)
+
+  schedules Schedule[]
+}
+
+model Schedule {
+  id           String    @id @default(cuid())
+  batchId      String
+  batch        Batch     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  instructorId String
+  instructor   Instructor @relation(fields: [instructorId], references: [id])
+  classroomId  String
+  classroom    Classroom  @relation(fields: [classroomId], references: [id])
+  day          DayOfWeek
+  startTime    String
+  endTime      String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([batchId])
+  @@index([instructorId])
+  @@index([classroomId])
+  @@index([day])
+}
+
+model InstructorAvailability {
+  id           String     @id @default(cuid())
+  instructorId String
+  instructor   Instructor @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  day          DayOfWeek
+  startTime    String
+  endTime      String
+  available    Boolean    @default(true)
+
+  @@unique([instructorId, day, startTime, endTime])
 }

@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { studentBatchPerformance, studentOverallPerformance, skillGaps, skillProgression } from "@/lib/analytics";
+import { studentBatchPerformanceMany, studentOverallPerformance, skillGaps, skillProgression } from "@/lib/analytics";
 
 /** Everything the model is allowed to know about one student. Nothing else reaches it. */
 export type StudentContext = NonNullable<Awaited<ReturnType<typeof buildStudentContext>>>;
@@ -35,7 +35,7 @@ export async function buildStudentContext(studentId: string) {
   });
   if (!student) return null;
 
-  const [overall, gaps, recent, batchPerf, progression] = await Promise.all([
+  const [overall, gaps, recent, perfMap, progression] = await Promise.all([
     studentOverallPerformance(studentId),
     skillGaps(studentId),
     db.assessmentResult.findMany({
@@ -44,14 +44,16 @@ export async function buildStudentContext(studentId: string) {
       take: 6,
       select: { score: true, assessment: { select: { title: true, maxScore: true, type: true } } },
     }),
-    Promise.all(
-      student.enrollments.map(async (e) => ({
-        batchCode: e.batch.code,
-        ...pick(await studentBatchPerformance(studentId, e.batch.id)),
-      })),
+    studentBatchPerformanceMany(
+      student.enrollments.map((e) => ({ studentId, batchId: e.batch.id })),
     ),
     skillProgression(studentId),
   ]);
+
+  const batchPerf = student.enrollments.map((e) => {
+    const p = perfMap.get(`${studentId}:${e.batch.id}`) ?? { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0 };
+    return { batchCode: e.batch.code, ...pick(p) };
+  });
 
   const progress = student.enrollments.flatMap((e) => e.progress);
 

@@ -413,6 +413,51 @@ async function main() {
   });
   await insert("batch", batchRows, "batches");
 
+  // ---------------- classrooms
+  const CLASSROOMS = [
+    { name: "Room 101", building: "Main Block", capacity: 35, hasTech: true },
+    { name: "Room 102", building: "Main Block", capacity: 35, hasTech: true },
+    { name: "Lab A", building: "Tech Wing", capacity: 25, hasTech: true },
+    { name: "Lab B", building: "Tech Wing", capacity: 25, hasTech: true },
+    { name: "Seminar Hall", building: "Main Block", capacity: 60, hasTech: true },
+    { name: "Room 201", building: "Annex", capacity: 20, hasTech: false },
+  ];
+  const classroomRows = CLASSROOMS.map((c, i) => ({
+    id: `cls_${pad(i, 2)}`,
+    ...c,
+  }));
+  await insert("classroom", classroomRows, "classrooms");
+
+  // ---------------- schedule entries for active batches
+  const DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
+  const SLOTS = [
+    { start: "08:00", end: "09:30" },
+    { start: "09:30", end: "11:00" },
+    { start: "11:00", end: "12:30" },
+    { start: "14:00", end: "15:30" },
+    { start: "15:30", end: "17:00" },
+  ];
+  const scheduleRows = [];
+  const activeBatches = batchRows.filter((b) => b.status === "ACTIVE");
+  activeBatches.forEach((batch, bi) => {
+    const sessionsPerWeek = 3;
+    for (let s = 0; s < sessionsPerWeek; s++) {
+      const dayIdx = (bi * 3 + s) % DAYS.length;
+      const slotIdx = (bi + s) % SLOTS.length;
+      const roomIdx = (bi + s) % CLASSROOMS.length;
+      scheduleRows.push({
+        id: `sch_${batch.code}_${s}`,
+        batchId: batch.id,
+        instructorId: batch.instructorId,
+        classroomId: classroomRows[roomIdx].id,
+        day: DAYS[dayIdx],
+        startTime: SLOTS[slotIdx].start,
+        endTime: SLOTS[slotIdx].end,
+      });
+    }
+  });
+  await insert("schedule", scheduleRows, "schedule entries");
+
   // ---------------- enrollments (~25 per batch, 1–2 batches per student)
   const enrollmentRows = [];
   const enrollments = []; // { studentId, batchId, batchIdx, arch }

@@ -1,11 +1,10 @@
 import { db } from "./db";
 import {
   coursePerformance,
-  batchPerformance,
-  studentBatchPerformance,
+  batchPerformanceMany,
+  studentBatchPerformanceMany,
   type Perf,
 } from "./analytics";
-import { mapLimit } from "./management";
 
 /**
  * Course management read model.
@@ -106,9 +105,7 @@ export async function getCourseDetail(courseId: string): Promise<CourseDetail | 
   if (!course) return null;
 
   const perf = await coursePerformance(courseId);
-  const batchPerfMap = new Map(
-    await Promise.all(course.batches.map(async (b) => [b.id, await batchPerformance(b.id)] as const)),
-  );
+  const batchPerfMap = await batchPerformanceMany(course.batches.map((b) => b.id));
 
   const modules: CourseModule[] = course.modules.map((m) => ({
     id: m.id,
@@ -180,7 +177,11 @@ export async function getCourseStudents(courseId: string): Promise<CourseStudent
   // Count total modules in the course
   const moduleCount = await db.module.count({ where: { courseId } });
 
-  return mapLimit(enrollments, 4, async (e) => ({
+  const perfMap = await studentBatchPerformanceMany(
+    enrollments.map((e) => ({ studentId: e.studentId, batchId: e.batch.id })),
+  );
+
+  return enrollments.map((e) => ({
     id: e.student.id,
     name: e.student.user.name,
     rollNo: e.student.rollNo,
@@ -188,7 +189,7 @@ export async function getCourseStudents(courseId: string): Promise<CourseStudent
     batchId: e.batch.id,
     modulesCompleted: e.progress.filter((p) => p.status === "COMPLETED").length,
     modulesTotal: moduleCount,
-    perf: await studentBatchPerformance(e.studentId, e.batchId),
+    perf: perfMap.get(`${e.studentId}:${e.batch.id}`) ?? { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0 },
   }));
 }
 

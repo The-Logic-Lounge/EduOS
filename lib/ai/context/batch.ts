@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { batchPerformance, moduleWeakness, studentBatchPerformance } from "@/lib/analytics";
+import { batchPerformance, moduleWeakness, studentBatchPerformanceMany } from "@/lib/analytics";
 
 export type BatchContext = NonNullable<Awaited<ReturnType<typeof buildBatchContext>>>;
 
@@ -74,25 +74,27 @@ export async function buildBatchContext(batchId: string) {
   });
   if (!batch) return null;
 
-  const [perf, weakness, students] = await Promise.all([
+  const [perf, weakness, perfMap] = await Promise.all([
     batchPerformance(batchId),
     moduleWeakness(batchId),
-    Promise.all(
-      batch.enrollments.map(async (e) => {
-        const p = await studentBatchPerformance(e.student.id, batchId);
-        return {
-          name: e.student.user.name,
-          rollNo: e.student.rollNo,
-          city: e.student.city,
-          overall: p.overall,
-          assessmentPct: p.assessmentPct,
-          assignmentPct: p.assignmentPct,
-          attendancePct: p.attendancePct,
-          sampleSize: p.sampleSize,
-        };
-      }),
+    studentBatchPerformanceMany(
+      batch.enrollments.map((e) => ({ studentId: e.student.id, batchId })),
     ),
   ]);
+
+  const students = batch.enrollments.map((e) => {
+    const p = perfMap.get(`${e.student.id}:${batchId}`) ?? { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0 };
+    return {
+      name: e.student.user.name,
+      rollNo: e.student.rollNo,
+      city: e.student.city,
+      overall: p.overall,
+      assessmentPct: p.assessmentPct,
+      assignmentPct: p.assignmentPct,
+      attendancePct: p.attendancePct,
+      sampleSize: p.sampleSize,
+    };
+  });
 
   // Session stats
   const sessionsConducted = batch.sessions.filter((s) => s.conducted).length;

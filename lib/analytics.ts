@@ -91,6 +91,100 @@ export async function studentOverallPerformance(studentId: string): Promise<Perf
   return fromRows(results, submissions, attendance);
 }
 
+/**
+ * Compute performance for many (student, batch) pairs in 3 queries total.
+ * Returns a Map keyed by "studentId:batchId".
+ */
+export async function studentBatchPerformanceMany(
+  pairs: { studentId: string; batchId: string }[],
+): Promise<Map<string, Perf>> {
+  if (pairs.length === 0) return new Map();
+  const studentIds = [...new Set(pairs.map((p) => p.studentId))];
+  const batchIds = [...new Set(pairs.map((p) => p.batchId))];
+
+  const [results, submissions, attendance] = await Promise.all([
+    db.assessmentResult.findMany({
+      where: { studentId: { in: studentIds }, assessment: { batchId: { in: batchIds } } },
+      select: { studentId: true, score: true, assessment: { select: { batchId: true, maxScore: true } } },
+    }),
+    db.submission.findMany({
+      where: { studentId: { in: studentIds }, assignment: { batchId: { in: batchIds } } },
+      select: { studentId: true, score: true, assignment: { select: { batchId: true, maxScore: true } } },
+    }),
+    db.attendance.findMany({
+      where: { studentId: { in: studentIds }, session: { batchId: { in: batchIds } } },
+      select: { studentId: true, status: true, session: { select: { batchId: true } } },
+    }),
+  ]);
+
+  const buckets = new Map<string, { results: ResultRow[]; subs: SubRow[]; att: AttRow[] }>();
+  for (const p of pairs) {
+    buckets.set(`${p.studentId}:${p.batchId}`, { results: [], subs: [], att: [] });
+  }
+
+  for (const r of results) {
+    const key = `${r.studentId}:${r.assessment.batchId}`;
+    const b = buckets.get(key);
+    if (b) b.results.push({ score: r.score, assessment: { maxScore: r.assessment.maxScore } });
+  }
+  for (const s of submissions) {
+    const key = `${s.studentId}:${s.assignment.batchId}`;
+    const b = buckets.get(key);
+    if (b) b.subs.push({ score: s.score, assignment: { maxScore: s.assignment.maxScore } });
+  }
+  for (const a of attendance) {
+    const key = `${a.studentId}:${a.session.batchId}`;
+    const b = buckets.get(key);
+    if (b) b.att.push({ status: a.status });
+  }
+
+  const out = new Map<string, Perf>();
+  for (const [key, bucket] of buckets) out.set(key, fromRows(bucket.results, bucket.subs, bucket.att));
+  return out;
+}
+
+/**
+ * Compute overall performance for many students in 3 queries total.
+ * Returns a Map keyed by studentId.
+ */
+export async function studentOverallPerformanceMany(studentIds: string[]): Promise<Map<string, Perf>> {
+  if (studentIds.length === 0) return new Map();
+  const [results, submissions, attendance] = await Promise.all([
+    db.assessmentResult.findMany({
+      where: { studentId: { in: studentIds } },
+      select: { studentId: true, score: true, assessment: { select: { maxScore: true } } },
+    }),
+    db.submission.findMany({
+      where: { studentId: { in: studentIds } },
+      select: { studentId: true, score: true, assignment: { select: { maxScore: true } } },
+    }),
+    db.attendance.findMany({
+      where: { studentId: { in: studentIds } },
+      select: { studentId: true, status: true },
+    }),
+  ]);
+
+  const buckets = new Map<string, { results: ResultRow[]; subs: SubRow[]; att: AttRow[] }>();
+  for (const id of studentIds) buckets.set(id, { results: [], subs: [], att: [] });
+
+  for (const r of results) {
+    const b = buckets.get(r.studentId);
+    if (b) b.results.push({ score: r.score, assessment: { maxScore: r.assessment.maxScore } });
+  }
+  for (const s of submissions) {
+    const b = buckets.get(s.studentId);
+    if (b) b.subs.push({ score: s.score, assignment: { maxScore: s.assignment.maxScore } });
+  }
+  for (const a of attendance) {
+    const b = buckets.get(a.studentId);
+    if (b) b.att.push({ status: a.status });
+  }
+
+  const out = new Map<string, Perf>();
+  for (const [id, bucket] of buckets) out.set(id, fromRows(bucket.results, bucket.subs, bucket.att));
+  return out;
+}
+
 type ResultRow = { score: number; assessment: { maxScore: number } };
 type SubRow = { score: number | null; assignment: { maxScore: number } };
 type AttRow = { status: string };
@@ -135,9 +229,59 @@ export async function batchPerformance(batchId: string): Promise<Perf> {
   return fromRows(results, submissions, attendance);
 }
 
+/**
+ * Compute performance for many batches in 3 queries total (one each for
+ * assessments, assignments, attendance) instead of 3 per batch.
+ * Returns a Map keyed by batchId.
+ */
+export async function batchPerformanceMany(batchIds: string[]): Promise<Map<string, Perf>> {
+  if (batchIds.length === 0) return new Map();
+  const [results, submissions, attendance] = await Promise.all([
+    db.assessmentResult.findMany({
+      where: { assessment: { batchId: { in: batchIds } } },
+      select: {
+        score: true,
+        assessment: { select: { batchId: true, maxScore: true } },
+      },
+    }),
+    db.submission.findMany({
+      where: { assignment: { batchId: { in: batchIds } } },
+      select: {
+        score: true,
+        assignment: { select: { batchId: true, maxScore: true } },
+      },
+    }),
+    db.attendance.findMany({
+      where: { session: { batchId: { in: batchIds } } },
+      select: { status: true, session: { select: { batchId: true } } },
+    }),
+  ]);
+
+  const buckets = new Map<string, { results: ResultRow[]; subs: SubRow[]; att: AttRow[] }>();
+  for (const id of batchIds) buckets.set(id, { results: [], subs: [], att: [] });
+
+  for (const r of results) {
+    const b = buckets.get(r.assessment.batchId);
+    if (b) b.results.push({ score: r.score, assessment: { maxScore: r.assessment.maxScore } });
+  }
+  for (const s of submissions) {
+    const b = buckets.get(s.assignment.batchId);
+    if (b) b.subs.push({ score: s.score, assignment: { maxScore: s.assignment.maxScore } });
+  }
+  for (const a of attendance) {
+    const b = buckets.get(a.session.batchId);
+    if (b) b.att.push({ status: a.status });
+  }
+
+  const out = new Map<string, Perf>();
+  for (const [id, bucket] of buckets) out.set(id, fromRows(bucket.results, bucket.subs, bucket.att));
+  return out;
+}
+
 export async function coursePerformance(courseId: string): Promise<Perf> {
   const batches = await db.batch.findMany({ where: { courseId }, select: { id: true } });
-  return meanPerf(await Promise.all(batches.map((b) => batchPerformance(b.id))));
+  const perfMap = await batchPerformanceMany(batches.map((b) => b.id));
+  return meanPerf([...perfMap.values()]);
 }
 
 export type InstructorPerf = Perf & {
@@ -156,17 +300,17 @@ export async function instructorPerformance(instructorId: string): Promise<Instr
   });
   const batchIds = batches.map((b) => b.id);
 
-  const [sessions, perf] = await Promise.all([
+  const [sessions, perfMap] = await Promise.all([
     db.classSession.findMany({
       where: { batchId: { in: batchIds } },
       select: { conducted: true, instructorPresent: true },
     }),
-    Promise.all(batchIds.map((id) => batchPerformance(id))).then(meanPerf),
+    batchPerformanceMany(batchIds),
   ]);
 
   const conducted = sessions.filter((s) => s.conducted).length;
   return {
-    ...perf,
+    ...meanPerf([...perfMap.values()]),
     batchCount: batches.length,
     studentCount: batches.reduce((s, b) => s + b._count.enrollments, 0),
     classesConducted: conducted,
@@ -184,7 +328,8 @@ export async function instituteSummary() {
     db.batch.count(),
     db.batch.findMany({ select: { id: true } }),
   ]);
-  const perf = meanPerf(await Promise.all(activeBatches.map((b) => batchPerformance(b.id))));
+  const perfMap = await batchPerformanceMany(activeBatches.map((b) => b.id));
+  const perf = meanPerf([...perfMap.values()]);
   return { students, instructors, courses, batches, perf };
 }
 
@@ -254,16 +399,17 @@ export async function recomputeStudentSkills(studentId: string) {
     }
   }
 
-  for (const [skillId, r] of acc) {
+  const ops = [...acc.entries()].map(([skillId, r]) => {
     const score = Math.round(pct(r.got, r.max));
     const level = skillLevelFromScore(score);
-    if (!level) continue; // below 40% is not yet a skill you can claim
-    await db.studentSkill.upsert({
+    if (!level) return null;
+    return db.studentSkill.upsert({
       where: { studentId_skillId: { studentId, skillId } },
       create: { studentId, skillId, score, level, evidenceCount: r.n },
       update: { score, level, evidenceCount: r.n },
     });
-  }
+  }).filter((op) => op !== null);
+  if (ops.length > 0) await db.$transaction(ops);
 }
 
 /** Skills a student's enrolled courses target but they have not reached — the gap. */

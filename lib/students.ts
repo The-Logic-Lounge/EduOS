@@ -2,16 +2,16 @@ import type { Prisma } from "@prisma/client";
 import { db } from "./db";
 import { requireUser, type SessionUser } from "./auth";
 import { AuthError } from "./api";
-import { mapLimit } from "./management";
-import { studentBatchPerformance, studentOverallPerformance, type Perf } from "./analytics";
+import { studentOverallPerformance, studentBatchPerformanceMany, studentOverallPerformanceMany, type Perf } from "./analytics";
 
 /**
  * The administrative student read model. Pages and /api/students/* both call this,
  * so the roster, the detail dashboard and the API can never disagree.
  * Every performance number comes from lib/analytics.ts — nothing is recomputed here.
  *
- * Fan-out is bounded with mapLimit for the same reason lib/management.ts is: an
- * unbounded Promise.all over the roster exhausts the Prisma pool and 500s the page.
+ * Performance fan-out uses batched queries (studentOverallPerformanceMany,
+ * studentBatchPerformanceMany) — 3 queries for N students instead of 3N —
+ * so the Prisma pool is never exhausted.
  */
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -108,7 +108,9 @@ export async function listStudents({
     }),
   ]);
 
-  const rows = await mapLimit(students, 4, async (s) => ({
+  const perfMap = await studentOverallPerformanceMany(students.map((s) => s.id));
+
+  const rows = students.map((s) => ({
     id: s.id,
     name: s.user.name,
     rollNo: s.rollNo,
@@ -117,7 +119,7 @@ export async function listStudents({
     education: s.education,
     joinedAt: s.joinedAt,
     batches: s.enrollments.map((e) => e.batch.code),
-    perf: await studentOverallPerformance(s.id),
+    perf: perfMap.get(s.id) ?? { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0 },
   }));
 
   return { rows, total };
@@ -234,7 +236,11 @@ export async function studentCourses(id: string) {
     },
   });
 
-  return mapLimit(enrollments, 4, async (e) => ({
+  const perfMap = await studentBatchPerformanceMany(
+    enrollments.map((e) => ({ studentId: id, batchId: e.batch.id })),
+  );
+
+  return enrollments.map((e) => ({
     enrollmentId: e.id,
     status: e.status as string,
     finalGrade: e.finalGrade,
@@ -254,7 +260,7 @@ export async function studentCourses(id: string) {
     durationWeeks: e.batch.course.durationWeeks,
     modulesTotal: e.batch.course._count.modules,
     modulesCompleted: e.progress.filter((p) => p.status === "COMPLETED").length,
-    perf: await studentBatchPerformance(id, e.batch.id),
+    perf: perfMap.get(`${id}:${e.batch.id}`) ?? { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0 },
   }));
 }
 
@@ -284,13 +290,16 @@ export async function studentAttendance(id: string) {
   }));
 
   const batchIds = [...new Set(sessions.map((s) => s.batchId))];
-  const byBatch = await mapLimit(batchIds, 4, async (batchId) => {
+  const perfMap = await studentBatchPerformanceMany(
+    batchIds.map((batchId) => ({ studentId: id, batchId })),
+  );
+  const byBatch = batchIds.map((batchId) => {
     const list = sessions.filter((s) => s.batchId === batchId);
     return {
       batchId,
       batchCode: list[0].batchCode,
       records: list.length,
-      perf: await studentBatchPerformance(id, batchId),
+      perf: perfMap.get(`${id}:${batchId}`) ?? { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0 },
       sessions: list,
     };
   });
@@ -441,13 +450,17 @@ export async function studentPerformance(id: string) {
     }),
   ]);
 
-  const batches = await mapLimit(enrollments, 4, async (e) => ({
+  const perfMap = await studentBatchPerformanceMany(
+    enrollments.map((e) => ({ studentId: id, batchId: e.batch.id })),
+  );
+
+  const batches = enrollments.map((e) => ({
     batchId: e.batch.id,
     batchCode: e.batch.code,
     courseTitle: e.batch.course.title,
     status: e.status as string,
     finalGrade: e.finalGrade,
-    perf: await studentBatchPerformance(id, e.batch.id),
+    perf: perfMap.get(`${id}:${e.batch.id}`) ?? { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0 },
   }));
 
   return { overall, batches };

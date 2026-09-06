@@ -1,10 +1,13 @@
 import { db } from "@/lib/db";
 import {
   batchPerformance as batchPerf,
+  batchPerformanceMany,
   coursePerformance as coursePerf,
   instituteSummary as summary,
   instructorPerformance as instructorPerf,
+  meanPerf,
 } from "@/lib/analytics";
+import { getAllSchedules } from "@/lib/scheduling/engine";
 import type { SkillLevel } from "@prisma/client";
 import type { ToolSpec } from "./client";
 
@@ -105,22 +108,22 @@ async function rankBatches({ courseCode, limit }: { courseCode?: string; limit?:
     },
   });
 
-  const rows = await Promise.all(
-    batches.map(async (b) => {
-      const p = await batchPerf(b.id);
-      return {
-        code: b.code,
-        name: b.name,
-        status: b.status,
-        courseCode: b.course.code,
-        instructor: b.instructor.user.name,
-        students: b._count.enrollments,
-        overall: p.overall,
-        attendancePct: p.attendancePct,
-        sampleSize: p.sampleSize,
-      };
-    }),
-  );
+  const perfMap = await batchPerformanceMany(batches.map((b) => b.id));
+
+  const rows = batches.map((b) => {
+    const p = perfMap.get(b.id) ?? { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0 };
+    return {
+      code: b.code,
+      name: b.name,
+      status: b.status,
+      courseCode: b.course.code,
+      instructor: b.instructor.user.name,
+      students: b._count.enrollments,
+      overall: p.overall,
+      attendancePct: p.attendancePct,
+      sampleSize: p.sampleSize,
+    };
+  });
 
   return rows.sort((a, b) => b.overall - a.overall).slice(0, clamp(limit, 10));
 }
@@ -136,24 +139,61 @@ async function instructorPerformance({ name }: { name: string }) {
 }
 
 async function rankInstructors({ limit }: { limit?: number }) {
-  const instructors = await db.instructor.findMany({
-    select: { id: true, specialization: true, user: { select: { name: true } } },
-  });
-  const rows = await Promise.all(
-    instructors.map(async (i) => {
-      const p = await instructorPerf(i.id);
-      return {
-        name: i.user.name,
-        specialization: i.specialization,
-        batches: p.batchCount,
-        students: p.studentCount,
-        overall: p.overall,
-        conductRate: p.conductRate,
-        ownAttendancePct: p.ownAttendancePct,
-        sampleSize: p.sampleSize,
-      };
+  const [instructors, batches] = await Promise.all([
+    db.instructor.findMany({
+      select: { id: true, specialization: true, user: { select: { name: true } } },
     }),
-  );
+    db.batch.findMany({
+      select: { id: true, instructorId: true, _count: { select: { enrollments: true } } },
+    }),
+  ]);
+
+  const perfMap = await batchPerformanceMany(batches.map((b) => b.id));
+
+  const batchesByInstructor = new Map<string, typeof batches>();
+  for (const b of batches) {
+    const list = batchesByInstructor.get(b.instructorId) ?? [];
+    list.push(b);
+    batchesByInstructor.set(b.instructorId, list);
+  }
+
+  const allBatchIds = batches.map((b) => b.id);
+  const allSessions = await db.classSession.findMany({
+    where: { batchId: { in: allBatchIds } },
+    select: { batchId: true, conducted: true, instructorPresent: true },
+  });
+  const sessionsByBatchId = new Map<string, { conducted: boolean; instructorPresent: boolean }[]>();
+  for (const s of allSessions) {
+    const list = sessionsByBatchId.get(s.batchId) ?? [];
+    list.push({ conducted: s.conducted, instructorPresent: s.instructorPresent });
+    sessionsByBatchId.set(s.batchId, list);
+  }
+
+  const rows = instructors.map((i) => {
+    const iBatches = batchesByInstructor.get(i.id) ?? [];
+    const iBatchIds = new Set(iBatches.map((b) => b.id));
+    const perfs = iBatches.map((b) => perfMap.get(b.id)).filter((p): p is NonNullable<typeof p> => !!p && p.sampleSize > 0);
+    const perf = perfs.length > 0 ? meanPerf(perfs) : { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0 };
+    let conducted = 0, scheduled = 0, present = 0;
+    for (const bid of iBatchIds) {
+      for (const s of sessionsByBatchId.get(bid) ?? []) {
+        scheduled++;
+        if (s.conducted) conducted++;
+        if (s.instructorPresent) present++;
+      }
+    }
+    return {
+      name: i.user.name,
+      specialization: i.specialization,
+      batches: iBatches.length,
+      students: iBatches.reduce((s, b) => s + b._count.enrollments, 0),
+      overall: perf.overall,
+      conductRate: scheduled > 0 ? Math.round((conducted / scheduled) * 1000) / 10 : 0,
+      ownAttendancePct: scheduled > 0 ? Math.round((present / scheduled) * 1000) / 10 : 0,
+      sampleSize: perf.sampleSize,
+    };
+  });
+
   return rows.sort((a, b) => b.overall - a.overall).slice(0, clamp(limit, 10));
 }
 
@@ -205,6 +245,77 @@ async function instituteSummary() {
     assignmentPct: s.perf.assignmentPct,
     attendancePct: s.perf.attendancePct,
     sampleSize: s.perf.sampleSize,
+  };
+}
+
+async function listSchedules() {
+  const schedules = await getAllSchedules();
+  return schedules.map((s) => ({
+    day: s.day,
+    startTime: s.startTime,
+    endTime: s.endTime,
+    batchCode: s.batch.code,
+    batchName: s.batch.name,
+    courseTitle: s.batch.course.title,
+    instructor: s.instructor.user.name,
+    classroom: s.classroom.name,
+    building: s.classroom.building,
+  }));
+}
+
+async function listBatches() {
+  const batches = await db.batch.findMany({
+    orderBy: { code: "asc" },
+    select: {
+      id: true, code: true, name: true, status: true,
+      course: { select: { code: true, title: true } },
+      instructor: { select: { user: { select: { name: true } } } },
+      _count: { select: { enrollments: true, schedules: true } },
+    },
+  });
+  return batches.map((b) => ({
+    code: b.code,
+    name: b.name,
+    status: b.status,
+    courseCode: b.course.code,
+    courseTitle: b.course.title,
+    instructor: b.instructor.user.name,
+    students: b._count.enrollments,
+    scheduledSessions: b._count.schedules,
+  }));
+}
+
+async function listClassrooms() {
+  const rooms = await db.classroom.findMany({
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, building: true, capacity: true, hasTech: true, _count: { select: { schedules: true } } },
+  });
+  return rooms.map((r) => ({
+    name: r.name,
+    building: r.building,
+    capacity: r.capacity,
+    hasTech: r.hasTech,
+    scheduledSessions: r._count.schedules,
+  }));
+}
+
+async function scheduleOverview() {
+  const [total, rooms, batches, byDay] = await Promise.all([
+    db.schedule.count(),
+    db.classroom.count(),
+    db.batch.count(),
+    db.schedule.groupBy({ by: ["day"], _count: true }),
+  ]);
+  const dayCounts = byDay.reduce<Record<string, number>>((acc, g) => {
+    acc[g.day] = g._count;
+    return acc;
+  }, {});
+  return {
+    totalSessions: total,
+    classrooms: rooms,
+    batches: batches,
+    sessionsPerDay: dayCounts,
+    hasSchedule: total > 0,
   };
 }
 
@@ -313,6 +424,38 @@ const REGISTRY: Record<string, { spec: ToolSpec; run: Impl }> = {
       parameters: NO_ARGS,
     },
     run: instituteSummary,
+  },
+  listSchedules: {
+    spec: {
+      name: "listSchedules",
+      description: "Every scheduled class session: day, time, batch, instructor, classroom, building.",
+      parameters: NO_ARGS,
+    },
+    run: listSchedules,
+  },
+  listBatches: {
+    spec: {
+      name: "listBatches",
+      description: "All batches with their course, instructor, student count, and number of scheduled sessions.",
+      parameters: NO_ARGS,
+    },
+    run: listBatches,
+  },
+  listClassrooms: {
+    spec: {
+      name: "listClassrooms",
+      description: "All classrooms with capacity, building, tech availability, and number of scheduled sessions.",
+      parameters: NO_ARGS,
+    },
+    run: listClassrooms,
+  },
+  scheduleOverview: {
+    spec: {
+      name: "scheduleOverview",
+      description: "High-level timetable summary: total sessions, sessions per day, classroom and batch counts.",
+      parameters: NO_ARGS,
+    },
+    run: scheduleOverview,
   },
 };
 
