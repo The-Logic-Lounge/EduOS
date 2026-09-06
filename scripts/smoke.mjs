@@ -14,14 +14,17 @@ const PAGES = {
             "/student/assignments", "/student/passport", "/student/career", "/student/timetable"],
   INSTRUCTOR: ["/instructor", "/instructor/batches", "/instructor/copilot", "/courses", "/courses/new", "/instructor/timetable"],
   MANAGEMENT: ["/management", "/management/students", "/management/students/new",
-               "/management/instructors", "/management/courses",
+               "/management/instructors", "/management/instructors/new",
+               "/management/batches", "/management/batches/new",
+               "/management/courses",
                "/management/intelligence", "/management/ask", "/management/timetable"],
 };
 
 const APIS = {
   STUDENT: ["/api/student/overview", "/api/schedule"],
   INSTRUCTOR: ["/api/instructor/batches", "/api/schedule"],
-  MANAGEMENT: ["/api/management/overview", "/api/management/students", "/api/students", "/api/schedule", "/api/classrooms"],
+  MANAGEMENT: ["/api/management/overview", "/api/management/students", "/api/students",
+               "/api/instructors", "/api/batches", "/api/schedule", "/api/classrooms"],
 };
 
 const CRASH = /Application error|error occurred in the Server Components render|"digest"/;
@@ -96,18 +99,17 @@ async function run() {
   // [id] routes are where crashes hide — a list page can be green while every detail 500s.
   try {
     const cookie = await login("MANAGEMENT");
-    const res = await timedFetch(`${BASE}/api/students?limit=1`, { headers: { cookie } });
-    const body = await res.json();
-    const id = (body?.data?.rows ?? body?.data?.students ?? [])[0]?.id;
-    if (!id) {
-      log(false, "[id] routes — could not read a student id from /api/students");
-    } else {
-      console.log(`\n── DETAIL ROUTES (student ${id}) ─────────`);
+
+    const studentRes = await timedFetch(`${BASE}/api/students?limit=1`, { headers: { cookie } });
+    const studentBody = await studentRes.json();
+    const studentId = (studentBody?.data?.students ?? [])[0]?.id;
+    if (studentId) {
+      console.log(`\n── DETAIL ROUTES (student ${studentId}) ─────────`);
       for (const path of [
-        `/management/students/${id}`, `/management/students/${id}/edit`,
-        `/api/students/${id}`, `/api/students/${id}/courses`, `/api/students/${id}/attendance`,
-        `/api/students/${id}/assessments`, `/api/students/${id}/assignments`,
-        `/api/students/${id}/performance`, `/api/students/${id}/progress`,
+        `/management/students/${studentId}`, `/management/students/${studentId}/edit`,
+        `/api/students/${studentId}`, `/api/students/${studentId}/courses`, `/api/students/${studentId}/attendance`,
+        `/api/students/${studentId}/assessments`, `/api/students/${studentId}/assignments`,
+        `/api/students/${studentId}/performance`, `/api/students/${studentId}/progress`,
       ]) {
         const r = await timedFetch(BASE + path, { headers: { cookie } });
         const t = await r.text();
@@ -116,6 +118,47 @@ async function run() {
         log(okNow, `${path} → ${r.status}${!isApi && r.status === 200 && CRASH.test(t) ? " (page crashed)" : ""}`);
         await sleep(500);
       }
+    } else {
+      log(false, "[id] routes — could not read a student id from /api/students");
+    }
+
+    const instructorRes = await timedFetch(`${BASE}/api/instructors`, { headers: { cookie } });
+    const instructorBody = await instructorRes.json();
+    const instructorId = (instructorBody?.data?.instructors ?? [])[0]?.id;
+    if (instructorId) {
+      console.log(`\n── DETAIL ROUTES (instructor ${instructorId}) ─────────`);
+      for (const path of [
+        `/management/instructors/${instructorId}`, `/management/instructors/${instructorId}/edit`,
+        `/api/instructors/${instructorId}`, `/api/instructors/${instructorId}/students`,
+      ]) {
+        const r = await timedFetch(BASE + path, { headers: { cookie } });
+        const t = await r.text();
+        const isApi = path.startsWith("/api/");
+        const okNow = r.status === 200 && (isApi ? JSON.parse(t || "{}").success === true : !CRASH.test(t));
+        log(okNow, `${path} → ${r.status}${!isApi && r.status === 200 && CRASH.test(t) ? " (page crashed)" : ""}`);
+        await sleep(500);
+      }
+    } else {
+      log(false, "[id] routes — could not read an instructor id from /api/instructors");
+    }
+
+    const batchRes = await timedFetch(`${BASE}/api/batches`, { headers: { cookie } });
+    const batchBody = await batchRes.json();
+    const batchId = (batchBody?.data?.batches ?? [])[0]?.id;
+    if (batchId) {
+      console.log(`\n── DETAIL ROUTES (batch ${batchId}) ─────────`);
+      for (const path of [
+        `/instructor/batches/${batchId}`, `/management/batches/${batchId}/edit`, `/api/batches/${batchId}`,
+      ]) {
+        const r = await timedFetch(BASE + path, { headers: { cookie } });
+        const t = await r.text();
+        const isApi = path.startsWith("/api/");
+        const okNow = r.status === 200 && (isApi ? JSON.parse(t || "{}").success === true : !CRASH.test(t));
+        log(okNow, `${path} → ${r.status}${!isApi && r.status === 200 && CRASH.test(t) ? " (page crashed)" : ""}`);
+        await sleep(500);
+      }
+    } else {
+      log(false, "[id] routes — could not read a batch id from /api/batches");
     }
   } catch (e) {
     log(false, `[id] routes — ${e.message}`);

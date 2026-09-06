@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 import { EnrollIn, zodMessage } from "@/lib/schemas/student";
+import { backfillEnrollment } from "@/lib/students";
 
 export const dynamic = "force-dynamic";
 
@@ -33,9 +34,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return fail(`Batch ${batch.code} is at capacity (${batch.capacity})`, 400);
     }
 
-    const enrollment = await db.enrollment.create({
-      data: { studentId: id, batchId, enrolledAt: new Date(), status: "ACTIVE" },
-      select: { id: true, enrolledAt: true, status: true },
+    const enrollment = await db.$transaction(async (tx) => {
+      const created = await tx.enrollment.create({
+        data: { studentId: id, batchId, enrolledAt: new Date(), status: "ACTIVE" },
+        select: { id: true, enrolledAt: true, status: true },
+      });
+      await backfillEnrollment(tx, created.id, id, batchId);
+      return created;
     });
 
     return ok({ ...enrollment, studentId: id, batchId, batchCode: batch.code });

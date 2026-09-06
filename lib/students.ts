@@ -160,6 +160,76 @@ export async function nextRollNo(): Promise<string> {
   return `${prefix}${String(Number.isFinite(n) ? n : 1).padStart(4, "0")}`;
 }
 
+/**
+ * Backfill all derived rows a new enrollment needs so downstream pages and
+ * consistency checks never see a student enrolled in a batch with no evidence.
+ * Past sessions are marked EXCUSED, past assessments get a 0 result, assignments
+ * are MISSING, and module progress starts at NOT_STARTED.
+ */
+export async function backfillEnrollment(
+  tx: Omit<Prisma.TransactionClient, "$transaction">,
+  enrollmentId: string,
+  studentId: string,
+  batchId: string,
+) {
+  const [sessions, assessments, assignments, modules] = await Promise.all([
+    tx.classSession.findMany({
+      where: { batchId, conducted: true },
+      select: { id: true },
+    }),
+    tx.assessment.findMany({ where: { batchId }, select: { id: true } }),
+    tx.assignment.findMany({ where: { batchId }, select: { id: true } }),
+    tx.module.findMany({
+      where: { course: { batches: { some: { id: batchId } } } },
+      select: { id: true },
+    }),
+  ]);
+
+  await Promise.all([
+    sessions.length
+      ? tx.attendance.createMany({
+          data: sessions.map((s) => ({
+            sessionId: s.id,
+            studentId,
+            status: "EXCUSED" as const,
+          })),
+          skipDuplicates: true,
+        })
+      : Promise.resolve(),
+    assessments.length
+      ? tx.assessmentResult.createMany({
+          data: assessments.map((a) => ({
+            assessmentId: a.id,
+            studentId,
+            score: 0,
+          })),
+          skipDuplicates: true,
+        })
+      : Promise.resolve(),
+    assignments.length
+      ? tx.submission.createMany({
+          data: assignments.map((a) => ({
+            assignmentId: a.id,
+            studentId,
+            status: "MISSING" as const,
+            score: null,
+          })),
+          skipDuplicates: true,
+        })
+      : Promise.resolve(),
+    modules.length
+      ? tx.moduleProgress.createMany({
+          data: modules.map((m) => ({
+            enrollmentId,
+            moduleId: m.id,
+            status: "NOT_STARTED" as const,
+          })),
+          skipDuplicates: true,
+        })
+      : Promise.resolve(),
+  ]);
+}
+
 // ---------------------------------------------------------------- detail
 
 export async function getStudent(id: string) {

@@ -26,6 +26,7 @@ export const MANAGEMENT_NAV: NavItem[] = [
   { href: "/management", label: "Dashboard" },
   { href: "/management/students", label: "Students" },
   { href: "/management/instructors", label: "Instructors" },
+  { href: "/management/batches", label: "Batches" },
   { href: "/management/courses", label: "Courses" },
   { href: "/management/intelligence", label: "AI Intelligence" },
   { href: "/management/ask", label: "Ask Edu OS" },

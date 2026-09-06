@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { moduleWeakness } from "@/lib/analytics";
-import { MODEL, aiEnabled, chatJSON, chatWithTools } from "./client";
+import { MODEL, aiEnabled, chatJSON, chatWithTools, extractJSON } from "./client";
 import { groundedAgainst } from "./guard";
 import { buildStudentContext } from "./context/student";
 import { buildBatchContext } from "./context/batch";
@@ -1125,11 +1125,32 @@ export async function askSchedule(question: string): Promise<Feature<SchedulingA
   const usable = results.some((r) => r && typeof r === "object" && !("error" in (r as object)));
   if (!usable) return unavailable("tools_returned_only_errors");
 
+  let answerText = res.data.answer;
+  let tableRows: Record<string, unknown>[] = [];
+  let bulletLines: string[] = [];
+  const jsonBlock = extractJSON(res.data.answer);
+  if (jsonBlock) {
+    try {
+      const parsed = JSON.parse(jsonBlock) as Record<string, unknown>;
+      if (typeof parsed.answer === "string") answerText = parsed.answer;
+      if (Array.isArray(parsed.table)) {
+        tableRows = parsed.table.filter(
+          (r): r is Record<string, unknown> => typeof r === "object" && r !== null,
+        );
+      }
+      if (Array.isArray(parsed.bullets)) {
+        bulletLines = parsed.bullets.filter((b): b is string => typeof b === "string");
+      }
+    } catch {
+      // answer isn't JSON — render it as plain text
+    }
+  }
+
   const data: SchedulingAnswer = {
     insufficient_data: false,
-    answer: res.data.answer,
-    table: [],
-    bullets: [],
+    answer: answerText,
+    table: tableRows,
+    bullets: bulletLines,
     toolsUsed: res.data.used.map((u) => u.name),
   };
   const { ungrounded } = groundedAgainst(data.answer, results);

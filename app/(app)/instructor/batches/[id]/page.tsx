@@ -11,6 +11,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import ProgressBar from "@/components/ui/ProgressBar";
 import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
 import { PerfBadge, BATCH_STATUS_VARIANT, fmtDate, fmtPct, scoreVariant } from "@/components/instructor/perf";
+import BatchActions from "./BatchActions";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ const pct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 10
 export default async function BatchDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requirePageRole("INSTRUCTOR", "MANAGEMENT");
+  const isManagement = user.role === "MANAGEMENT";
 
   const batch = await db.batch.findUnique({
     where: { id },
@@ -87,9 +89,12 @@ export default async function BatchDetailPage({ params }: { params: Promise<{ id
         title={batch.name}
         subtitle={`${batch.course.title} · ${batch.schedule} · ${fmtDate(batch.startDate)} → ${fmtDate(batch.endDate)}`}
         right={
-          <div className="flex items-center gap-3">
-            <span className="mono text-sm text-ink-2">{batch.code}</span>
-            <Badge variant={BATCH_STATUS_VARIANT[batch.status]}>{batch.status}</Badge>
+          <div className="flex flex-col items-end gap-3">
+            <div className="flex items-center gap-3">
+              <span className="mono text-sm text-ink-2">{batch.code}</span>
+              <Badge variant={BATCH_STATUS_VARIANT[batch.status]}>{batch.status}</Badge>
+            </div>
+            {isManagement && <BatchActions id={batch.id} enrolled={batch.enrollments.length} />}
           </div>
         }
       />
