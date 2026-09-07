@@ -17,7 +17,7 @@ const PAGES = {
                "/management/instructors", "/management/instructors/new",
                "/management/batches", "/management/batches/new",
                "/management/courses",
-               "/management/intelligence", "/management/ask", "/management/timetable"],
+               "/management/ask", "/management/timetable"],
 };
 
 const APIS = {
