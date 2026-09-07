@@ -14,9 +14,20 @@ const mono = JetBrains_Mono({
   display: "swap",
 });
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+
 export const metadata: Metadata = {
-  title: "Edu OS",
-  description: "AI operating system for a training institute",
+  metadataBase: new URL(SITE_URL),
+  title: { default: "Edu OS — Free IT Training Institute Operating System", template: "%s | Edu OS" },
+  description:
+    "Edu OS runs free IT training institutes end-to-end: admissions, attendance, assessments, skill passports, AI copilots, and career pathways.",
+  keywords: ["free IT training", "education management system", " LMS", "AI copilot", "skill passport", "Pakistan"],
+  openGraph: {
+    type: "website",
+    title: "Edu OS — Free IT Training Institute Operating System",
+    description: "Admissions to employability, powered by one intelligence layer.",
+  },
+  twitter: { card: "summary_large_image" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

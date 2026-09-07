@@ -20,6 +20,10 @@ const ROUTE_ROLES: { prefix: string; roles: Role[] }[] = [
 ];
 
 export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+  // Public marketing homepage must be reachable without a session.
+  if (pathname === "/") return NextResponse.next();
+
   const token = req.cookies.get("eduos_session")?.value;
   if (!token) return NextResponse.redirect(new URL("/login", req.url));
 
@@ -34,7 +38,6 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  const { pathname } = req.nextUrl;
   for (const { prefix, roles } of ROUTE_ROLES) {
     if (pathname.startsWith(prefix) && !roles.includes(role)) {
       return NextResponse.redirect(new URL(homeFor[role], req.url));

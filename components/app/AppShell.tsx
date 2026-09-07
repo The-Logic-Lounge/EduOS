@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import type { Role } from "@prisma/client";
 import { navFor } from "@/lib/nav";
+import { Wordmark } from "@/components/public/Wordmark";
 import { NotificationBell } from "./NotificationBell";
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -18,14 +19,10 @@ export type AppShellProps = {
   children: React.ReactNode;
 };
 
-function Wordmark() {
+function BrandLink() {
   return (
-    <Link href="/" className="group flex items-baseline gap-2.5 shrink-0">
-      <span className="font-display text-[1.0625rem] font-bold uppercase tracking-[-0.02em] text-ink">
-        Edu<span className="text-accent">&nbsp;OS</span>
-      </span>
-      <span className="hidden sm:block h-3 w-px bg-hairline-2" aria-hidden />
-      <span className="hidden sm:block stat text-[0.625rem]">Training Institute</span>
+    <Link href="/" className="group shrink-0">
+      <Wordmark />
     </Link>
   );
 }
@@ -103,7 +100,7 @@ export function AppShell({ user, children }: AppShellProps) {
               )}
             </svg>
           </button>
-          <Wordmark />
+          <BrandLink />
           <div className="ml-auto flex items-center gap-3">
             <NotificationBell />
             <span className="mono hidden md:block text-[0.6875rem] uppercase tracking-[0.12em] text-ink-3">

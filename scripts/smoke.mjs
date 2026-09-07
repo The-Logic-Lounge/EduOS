@@ -53,6 +53,18 @@ async function login(role) {
 }
 
 async function run() {
+  console.log("\n── PUBLIC PAGES ───────────────────────────────");
+  for (const path of ["/", "/login"]) {
+    try {
+      const res = await timedFetch(BASE + path, { redirect: "manual" });
+      const body = res.status === 200 ? await res.text() : "";
+      log(res.status === 200 && !CRASH.test(body), `${path} → ${res.status}${CRASH.test(body) ? " (crashed)" : ""}`);
+    } catch (e) {
+      log(false, `${path} — ${e.message}`);
+    }
+    await sleep(500);
+  }
+
   for (const role of Object.keys(ROLES)) {
     console.log(`\n── ${role} ───────────────────────────────`);
     let cookie;

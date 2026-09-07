@@ -496,3 +496,16 @@ model KnowledgeChunk {
 
   @@index([documentId])
 }
+
+// Public website enquiries --------------------------------------------------
+
+model ContactSubmission {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  message   String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
