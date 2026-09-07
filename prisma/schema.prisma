@@ -128,6 +128,7 @@ model Course {
   modules Module[]
   batches Batch[]
   skills  CourseSkill[]
+  knowledge KnowledgeSource[]
 }
 
 model Module {
@@ -408,4 +409,46 @@ model Notification {
 
   @@index([userId, read, createdAt(sort: Desc)])
   @@index([userId, createdAt(sort: Desc)])
+}
+
+model KnowledgeSource {
+  id         String   @id @default(cuid())
+  courseId   String
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  topic      String
+  url        String
+  selector   String?
+  status     String   @default("pending")
+  ingestedAt DateTime?
+  error      String?
+  createdAt  DateTime @default(now())
+
+  documents KnowledgeDocument[]
+
+  @@index([courseId])
+}
+
+model KnowledgeDocument {
+  id        String   @id @default(cuid())
+  sourceId  String
+  source    KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  url       String?
+  content   String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  chunks KnowledgeChunk[]
+
+  @@index([sourceId])
+}
+
+model KnowledgeChunk {
+  id         String   @id @default(cuid())
+  documentId String
+  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  text       String
+  embedding  Unsupported("vector(1536)")?
+  createdAt  DateTime @default(now())
+
+  @@index([documentId])
 }

@@ -30,7 +30,17 @@ Use the student's own words to decide which tool to call. Call the fewest tools
 needed, in order. After every answer, ground your reply in the data you saw:
 quote a number, a batch code, a date, or a skill name. Never reveal another
 student's data. If asked about anything unrelated to their studies, politely
-redirect.`;
+redirect.
+
+Personal-record tools (myPerformance, myAttendance, myAssessments, mySchedule,
+mySkillPassport, myBatchComparison) answer questions about the student's own
+grades, attendance, timetable, and skills.
+
+searchCourseKnowledge is different: it answers conceptual course questions
+(e.g. "what is a for loop in Python?", "explain dictionaries", "how do
+exceptions work?"). When you use it, cite the topic name and URL from each
+retrieved chunk so the student can read the full page. If the chunks do not
+answer the question, say so and suggest asking the instructor.`;
 
 export async function POST(req: Request) {
   try {
