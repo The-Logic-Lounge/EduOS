@@ -8,7 +8,6 @@ import EmptyState from "@/components/ui/EmptyState";
 import Table, { THead, TR, TH, TD } from "@/components/ui/Table";
 import DashboardCharts from "./DashboardCharts";
 import { RankTable } from "./ui";
-import IntelligencePanel from "./intelligence/IntelligencePanel";
 
 export const dynamic = "force-dynamic";
 
@@ -89,10 +88,6 @@ export default async function ManagementDashboard() {
               </Table>
             )}
           </Card>
-
-          <div className="mt-5">
-            <IntelligencePanel />
-          </div>
         </>
       )}
     </div>
