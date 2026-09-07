@@ -1,5 +1,5 @@
-import OpenAI from "openai";
 import type { ZodType } from "zod";
+import { createProvider, type ChatMessage, type LLMProvider } from "./providers";
 
 /**
  * The ONLY place that talks to an LLM.
@@ -10,24 +10,37 @@ import type { ZodType } from "zod";
  */
 
 export const MODEL = () => process.env.LLM_MODEL || "qwen-plus";
-const BASE_URL = () =>
-  process.env.LLM_BASE_URL || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1";
 
 const TIMEOUT_MS = 45_000;
 const MAX_TOOL_ROUNDS = 3;
 
-let client: OpenAI | null = null;
-
-export function aiEnabled(): boolean {
-  if (process.env.AI_ENABLED === "false") return false;
-  return (process.env.LLM_API_KEY || "").trim().length > 0;
+function safeCreateProvider(): LLMProvider | null {
+  try {
+    return createProvider();
+  } catch {
+    return null;
+  }
 }
 
-function getClient(): OpenAI {
-  if (!client) {
-    client = new OpenAI({ apiKey: (process.env.LLM_API_KEY || "").trim(), baseURL: BASE_URL() });
+let _provider: LLMProvider | null = null;
+let _lastKey = "";
+
+export function getProvider(): LLMProvider | null {
+  if (process.env.AI_ENABLED === "false") return null;
+  const key = (process.env.LLM_API_KEY || "").trim();
+  if (!key) {
+    _provider = null;
+    _lastKey = "";
+    return null;
   }
-  return client;
+  if (key === _lastKey && _provider) return _provider;
+  _lastKey = key;
+  _provider = safeCreateProvider();
+  return _provider;
+}
+
+export function aiEnabled(): boolean {
+  return getProvider() !== null;
 }
 
 export type AiResult<T> = { ok: true; data: T } | { ok: false; reason: string };
@@ -65,21 +78,20 @@ export async function chatJSON<T>(args: {
   schema: ZodType<T, any, any>;
   temperature?: number;
 }): Promise<AiResult<T>> {
-  if (!aiEnabled()) return { ok: false, reason: "ai_disabled" };
+  const provider = getProvider();
+  if (!provider) return { ok: false, reason: "ai_disabled" };
   try {
-    const res = await getClient().chat.completions.create(
-      {
-        model: MODEL(),
-        temperature: args.temperature ?? 0.2,
-        messages: [
-          { role: "system", content: args.system + JSON_RULE },
-          { role: "user", content: args.user },
-        ],
-      },
-      { signal: AbortSignal.timeout(TIMEOUT_MS) },
-    );
+    const res = await provider.chat({
+      model: MODEL(),
+      temperature: args.temperature ?? 0.2,
+      messages: [
+        { role: "system", content: args.system + JSON_RULE },
+        { role: "user", content: args.user },
+      ],
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
 
-    const raw = res.choices[0]?.message?.content ?? "";
+    const raw = res.content ?? "";
     const block = extractJSON(raw);
     if (!block) return { ok: false, reason: "no_json_in_response" };
 
@@ -117,33 +129,32 @@ export async function chatWithTools(args: {
   tools: ToolSpec[];
   exec: (name: string, input: Record<string, unknown>) => Promise<unknown>;
 }): Promise<AiResult<{ answer: string; used: { name: string; input: unknown; result: unknown }[] }>> {
-  if (!aiEnabled()) return { ok: false, reason: "ai_disabled" };
+  const provider = getProvider();
+  if (!provider) return { ok: false, reason: "ai_disabled" };
   try {
-    const openai = getClient();
-    const tools = args.tools.map((t) => ({
-      type: "function" as const,
-      function: { name: t.name, description: t.description, parameters: t.parameters },
-    }));
-
-    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+    const messages: ChatMessage[] = [
       { role: "system", content: args.system },
       { role: "user", content: args.user },
     ];
     const used: { name: string; input: unknown; result: unknown }[] = [];
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-      const res = await openai.chat.completions.create(
-        { model: MODEL(), temperature: 0, messages, tools, tool_choice: "auto" },
-        { signal: AbortSignal.timeout(TIMEOUT_MS) },
-      );
-      const msg = res.choices[0]?.message;
-      messages.push(msg as OpenAI.Chat.Completions.ChatCompletionMessageParam);
-      const calls = msg?.tool_calls ?? [];
+      const res = await provider.chat({
+        model: MODEL(),
+        temperature: 0,
+        messages,
+        tools: args.tools,
+        tool_choice: "auto",
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+
+      messages.push({ role: "assistant", content: res.content ?? null, tool_calls: res.tool_calls });
+      const calls = res.tool_calls ?? [];
 
       if (calls.length === 0) {
         // No tool wanted on the first pass means the question is not answerable from analytics.
         if (used.length === 0) return { ok: false, reason: "no_tool_selected" };
-        const answer = (msg?.content ?? "").trim();
+        const answer = (res.content ?? "").trim();
         return answer ? { ok: true, data: { answer, used } } : { ok: false, reason: "empty_answer" };
       }
 
@@ -163,11 +174,13 @@ export async function chatWithTools(args: {
     if (used.length === 0) return { ok: false, reason: "no_tool_selected" };
 
     // Out of rounds: make it answer with what the tools already returned.
-    const final = await openai.chat.completions.create(
-      { model: MODEL(), temperature: 0.1, messages },
-      { signal: AbortSignal.timeout(TIMEOUT_MS) },
-    );
-    const answer = (final.choices[0]?.message?.content ?? "").trim();
+    const final = await provider.chat({
+      model: MODEL(),
+      temperature: 0.1,
+      messages,
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    const answer = (final.content ?? "").trim();
     return answer ? { ok: true, data: { answer, used } } : { ok: false, reason: "empty_answer" };
   } catch (e) {
     return { ok: false, reason: e instanceof Error ? e.message : "llm_error" };
