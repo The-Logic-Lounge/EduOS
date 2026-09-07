@@ -13,6 +13,7 @@ export type SessionUser = {
   name: string;
   email: string;
   role: Role;
+  organizationId?: string;
   studentId?: string;
   instructorId?: string;
 };
@@ -72,6 +73,7 @@ export async function verifyLogin(email: string, password: string): Promise<Sess
     name: user.name,
     email: user.email,
     role: user.role,
+    organizationId: user.organizationId ?? undefined,
     studentId: user.student?.id,
     instructorId: user.instructor?.id,
   };
@@ -79,3 +81,15 @@ export async function verifyLogin(email: string, password: string): Promise<Sess
 
 export const homeFor = (role: Role) =>
   role === "STUDENT" ? "/student" : role === "INSTRUCTOR" ? "/instructor" : "/management";
+
+/** Returns a Prisma where-clause fragment that scopes a query to the user's tenant.
+ *  If the user has no organization, the fragment is empty so existing un-scoped data remains visible. */
+export function orgWhere(user: SessionUser): { organizationId?: string } {
+  return user.organizationId ? { organizationId: user.organizationId } : {};
+}
+
+/** Enforce that the signed-in user belongs to an organization. */
+export async function requireOrg(user: SessionUser): Promise<string> {
+  if (!user.organizationId) throw new AuthError("Organization required", 403);
+  return user.organizationId;
+}

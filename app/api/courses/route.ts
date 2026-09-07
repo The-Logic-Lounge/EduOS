@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { requireRole } from "@/lib/auth";
+import { requireRole, orgWhere } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 
 const ModuleIn = z.object({
@@ -29,8 +29,9 @@ const CourseIn = z.object({
 /** GET /api/courses — list all courses (returns catalogue). */
 export async function GET() {
   try {
-    await requireRole("MANAGEMENT", "INSTRUCTOR");
+    const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
     const courses = await db.course.findMany({
+      where: orgWhere(user),
       orderBy: { code: "asc" },
       include: {
         _count: { select: { modules: true, batches: true } },
@@ -46,7 +47,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    await requireRole("MANAGEMENT", "INSTRUCTOR");
+    const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
 
     const parsed = CourseIn.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
@@ -59,6 +60,7 @@ export async function POST(req: Request) {
       const newCourse = await tx.course.create({
         data: {
           ...course,
+          ...orgWhere(user),
           modules: { create: modules.map((m, i) => ({ ...m, order: i + 1 })) },
         },
         select: { id: true, code: true, title: true, _count: { select: { modules: true } } },

@@ -58,6 +58,8 @@ export type ListStudentsArgs = {
   batchId?: string;
   /** Scopes the roster to one instructor's batches — how INSTRUCTOR reads the list. */
   instructorId?: string;
+  /** Scopes the roster to the signed-in user's organization. */
+  organizationId?: string;
   limit?: number;
   offset?: number;
 };
@@ -66,6 +68,7 @@ export async function listStudents({
   q,
   batchId,
   instructorId,
+  organizationId,
   limit = 100,
   offset = 0,
 }: ListStudentsArgs = {}): Promise<{ rows: StudentListRow[]; total: number }> {
@@ -76,6 +79,7 @@ export async function listStudents({
   };
 
   const where: Prisma.StudentWhereInput = {
+    ...(organizationId ? { organizationId } : {}),
     ...(term
       ? {
           OR: [
@@ -126,8 +130,9 @@ export async function listStudents({
 }
 
 /** Batches for the roster filter, the registration form and the enrol control. */
-export async function batchOptions() {
+export async function batchOptions(orgId?: string) {
   const batches = await db.batch.findMany({
+    where: orgId ? { organizationId: orgId } : {},
     orderBy: { code: "asc" },
     select: {
       id: true,

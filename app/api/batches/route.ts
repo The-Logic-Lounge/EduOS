@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { requireRole } from "@/lib/auth";
+import { requireRole, orgWhere } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 import { getBatches } from "@/lib/batches";
 import { BatchCreate, zodMessage } from "@/lib/schemas/batch";
@@ -10,8 +10,8 @@ export const dynamic = "force-dynamic";
 /** GET /api/batches — list all batches for management. */
 export async function GET() {
   try {
-    await requireRole("MANAGEMENT");
-    const batches = await getBatches();
+    const user = await requireRole("MANAGEMENT");
+    const batches = await getBatches(user.organizationId);
     return ok({ batches });
   } catch (error) {
     return handleApiError(error);
@@ -21,7 +21,7 @@ export async function GET() {
 /** POST /api/batches — create a new batch. */
 export async function POST(req: Request) {
   try {
-    await requireRole("MANAGEMENT");
+    const user = await requireRole("MANAGEMENT");
 
     const parsed = BatchCreate.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return fail(zodMessage(parsed.error), 400);
@@ -39,6 +39,7 @@ export async function POST(req: Request) {
         schedule,
         capacity,
         status,
+        ...orgWhere(user),
       },
       select: { id: true },
     });
