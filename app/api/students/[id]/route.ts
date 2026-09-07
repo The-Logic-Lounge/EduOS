@@ -68,3 +68,30 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return handleApiError(error);
   }
 }
+
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    await requireRole("MANAGEMENT");
+    const { id } = await params;
+
+    const existing = await db.student.findUnique({
+      where: { id },
+      select: {
+        userId: true,
+        _count: { select: { enrollments: true } },
+      },
+    });
+    if (!existing) return fail("Student not found", 404);
+    if (existing._count.enrollments > 0) {
+      return fail("Cannot delete a student with active enrollments. Remove enrollments first.", 409);
+    }
+
+    await db.user.delete({ where: { id: existing.userId } });
+    return ok({ id, deleted: true });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+      return fail("Cannot delete: student has related records that must be removed first.", 409);
+    }
+    return handleApiError(error);
+  }
+}
