@@ -5,6 +5,7 @@ import {
   studentBatchPerformanceMany,
 } from "@/lib/analytics";
 import { getScheduleForStudent } from "@/lib/scheduling/engine";
+import { searchKnowledge } from "@/lib/rag/search";
 import type { ToolSpec } from "./client";
 
 /**
@@ -207,6 +208,40 @@ function makeTools(studentId: string) {
     });
   }
 
+  async function searchCourseKnowledge(input: Record<string, unknown>) {
+    const code = (String(input.batchCode ?? "")).trim();
+    const query = (String(input.query ?? "")).trim().slice(0, 300);
+    if (!code) return { error: "batchCode is required (e.g. DS-05)." };
+    if (!query) return { error: "query is required." };
+
+    const enrollment = await db.enrollment.findFirst({
+      where: { studentId, status: "ACTIVE", batch: { code: { equals: code, mode: "insensitive" } } },
+      select: { batch: { select: { code: true, courseId: true, course: { select: { title: true } } } } },
+    });
+    if (!enrollment) return { error: `You are not enrolled in batch "${code}".` };
+
+    const result = await searchKnowledge({ courseId: enrollment.batch.courseId, query, k: 5 });
+    if (!result.ok || result.chunks.length === 0) {
+      return {
+        batchCode: enrollment.batch.code,
+        courseTitle: enrollment.batch.course.title,
+        mode: result.mode,
+        message: "No course knowledge matched that query.",
+        chunks: [],
+      };
+    }
+    return {
+      batchCode: enrollment.batch.code,
+      courseTitle: enrollment.batch.course.title,
+      mode: result.mode,
+      chunks: result.chunks.map((c) => ({
+        text: c.text.slice(0, 900),
+        topic: c.source.topic,
+        url: c.source.url,
+      })),
+    };
+  }
+
   const REGISTRY: Record<string, { spec: ToolSpec; run: Impl }> = {
     myPerformance: {
       spec: {
@@ -268,6 +303,22 @@ function makeTools(studentId: string) {
       },
       run: myBatchComparison,
     },
+    searchCourseKnowledge: {
+      spec: {
+        name: "searchCourseKnowledge",
+        description:
+          "Look up course-specific notes (e.g. Python loops, dictionaries) for a batch the student is enrolled in. Use when a question is about a concept the student is studying, not about their personal marks.",
+        parameters: {
+          type: "object",
+          properties: {
+            batchCode: str("Batch code whose course notes to search, e.g. PY-100-A."),
+            query: str("Concept or topic to look up, e.g. 'for loops' or 'dictionary methods'."),
+          },
+          required: ["batchCode", "query"],
+        },
+      },
+      run: searchCourseKnowledge,
+    },
   };
 
   return REGISTRY;
@@ -281,6 +332,7 @@ export const STUDENT_TOOL_NAMES = [
   "mySchedule",
   "mySkillPassport",
   "myBatchComparison",
+  "searchCourseKnowledge",
 ];
 
 export function studentToolSpecs(): ToolSpec[] {
