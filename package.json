@@ -9,7 +9,8 @@
     "db:push": "prisma db push",
     "db:seed": "node --env-file=.env prisma/seed.mjs",
     "check": "node --env-file=.env scripts/check-consistency.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "test": "vitest"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",
@@ -29,9 +30,11 @@
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vitest/runner": "^4.1.11",
     "prisma": "^6.9.0",
     "tailwindcss": "^4.0.0",
     "tsx": "^4.23.13",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^5.0.0"
   }
 }
