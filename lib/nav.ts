@@ -12,6 +12,7 @@ export const STUDENT_NAV: NavItem[] = [
   { href: "/student/timetable", label: "Timetable" },
   { href: "/student/passport", label: "Skill Passport" },
   { href: "/student/career", label: "Career Path" },
+  { href: "/student/chat", label: "Ask Edu OS" },
 ];
 
 export const INSTRUCTOR_NAV: NavItem[] = [
