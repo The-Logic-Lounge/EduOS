@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import type { Role } from "@prisma/client";
 import { navFor } from "@/lib/nav";
+import { NotificationBell } from "./NotificationBell";
 
 const ROLE_LABEL: Record<Role, string> = {
   STUDENT: "Student",
@@ -104,6 +105,7 @@ export function AppShell({ user, children }: AppShellProps) {
           </button>
           <Wordmark />
           <div className="ml-auto flex items-center gap-3">
+            <NotificationBell />
             <span className="mono hidden md:block text-[0.6875rem] uppercase tracking-[0.12em] text-ink-3">
               {ROLE_LABEL[user.role]}
             </span>

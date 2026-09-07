@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 import { getAllSchedules, detectConflicts } from "@/lib/scheduling/engine";
+import { notifyBatch } from "@/lib/notifications";
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -112,6 +113,16 @@ export async function POST(req: Request) {
     const schedule = await db.schedule.create({
       data: { batchId, instructorId, classroomId, day, startTime, endTime },
     });
+
+    const room = classrooms.find((c) => c.id === classroomId);
+    notifyBatch(
+      batchId,
+      `New class scheduled: ${day} ${startTime}–${endTime}`,
+      room ? `Location: ${room.name}${room.building ? ` (${room.building})` : ""}.` : `A new class has been added to your timetable.`,
+      "schedule",
+      undefined,
+    ).catch(() => undefined);
+
     return ok(schedule);
   } catch (error) {
     return handleApiError(error);

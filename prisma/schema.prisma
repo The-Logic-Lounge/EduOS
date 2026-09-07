@@ -83,6 +83,7 @@ model User {
   createdAt    DateTime    @default(now())
   student      Student?
   instructor   Instructor?
+  notifications Notification[]
 }
 
 model Student {
@@ -391,4 +392,19 @@ model InstructorAvailability {
   available    Boolean    @default(true)
 
   @@unique([instructorId, day, startTime, endTime])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  type      String   @default("info")
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, read, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
 }

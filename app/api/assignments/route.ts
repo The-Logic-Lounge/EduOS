@@ -2,6 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
+import { notifyBatch } from "@/lib/notifications";
 
 const AssignmentIn = z.object({
   batchId: z.string().min(1),
@@ -62,6 +63,16 @@ export async function POST(req: Request) {
 
       return created;
     });
+
+    notifyBatch(
+      batchId,
+      `New assignment: ${title}`,
+      description
+        ? description.slice(0, 180) + (description.length > 180 ? "…" : "")
+        : `A new assignment has been posted for your batch.`,
+      "assignment",
+      undefined,
+    ).catch(() => undefined);
 
     return ok(assignment);
   } catch (error) {

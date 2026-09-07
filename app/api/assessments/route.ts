@@ -2,6 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
+import { notifyBatch } from "@/lib/notifications";
 
 const AssessmentIn = z.object({
   batchId: z.string().min(1),
@@ -62,6 +63,14 @@ export async function POST(req: Request) {
 
       return created;
     });
+
+    notifyBatch(
+      batchId,
+      `New ${type.toLowerCase()}: ${title}`,
+      `A new ${type.toLowerCase()} has been posted for your batch. Max score: ${maxScore}.`,
+      "assessment",
+      undefined,
+    ).catch(() => undefined);
 
     return ok(assessment);
   } catch (error) {
