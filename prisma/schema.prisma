@@ -217,6 +217,7 @@ model Enrollment {
   @@unique([studentId, batchId])
   @@index([studentId])
   @@index([batchId])
+  @@index([status])
 }
 
 model ClassSession {
@@ -263,6 +264,7 @@ model Assignment {
   submissions Submission[]
 
   @@index([batchId])
+  @@index([batchId, dueDate])
 }
 
 model Submission {
@@ -295,6 +297,8 @@ model Assessment {
   results AssessmentResult[]
 
   @@index([batchId])
+  @@index([batchId, scheduledAt])
+  @@index([batchId, moduleId])
 }
 
 model AssessmentResult {
