@@ -17,6 +17,22 @@ enum Role {
   STUDENT
 }
 
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String?  @unique
+  createdAt DateTime @default(now())
+
+  users       User[]
+  courses     Course[]
+  batches     Batch[]
+  classrooms  Classroom[]
+  instructors Instructor[]
+  students    Student[]
+
+  @@index([slug])
+}
+
 enum SkillLevel {
   BEGINNER
   INTERMEDIATE
@@ -75,60 +91,76 @@ enum DayOfWeek {
 }
 
 model User {
-  id           String      @id @default(cuid())
-  email        String      @unique
-  passwordHash String
-  name         String
-  role         Role
-  createdAt    DateTime    @default(now())
-  student      Student?
-  instructor   Instructor?
-  notifications Notification[]
+  id             String        @id @default(cuid())
+  email          String        @unique
+  passwordHash   String
+  name           String
+  role           Role
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
+  student        Student?
+  instructor     Instructor?
+  notifications  Notification[]
+
+  @@index([organizationId])
 }
 
 model Student {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  rollNo    String   @unique
-  phone     String
-  city      String
-  education String
-  joinedAt  DateTime
+  id             String        @id @default(cuid())
+  userId         String        @unique
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rollNo         String        @unique
+  phone          String
+  city           String
+  education      String
+  joinedAt       DateTime
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   enrollments  Enrollment[]
   attendance   Attendance[]
   submissions  Submission[]
   results      AssessmentResult[]
   skills       StudentSkill[]
+
+  @@index([organizationId])
 }
 
 model Instructor {
-  id             String   @id @default(cuid())
-  userId         String   @unique
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  employeeNo     String   @unique
+  id             String        @id @default(cuid())
+  userId         String        @unique
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeNo     String        @unique
   specialization String
   bio            String
   joinedAt       DateTime
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   batches       Batch[]
   availability  InstructorAvailability[]
   schedules     Schedule[]
+
+  @@index([organizationId])
 }
 
 model Course {
-  id            String  @id @default(cuid())
-  code          String  @unique
-  title         String
-  description   String
-  level         String
-  durationWeeks Int
+  id             String        @id @default(cuid())
+  code           String        @unique
+  title          String
+  description    String
+  level          String
+  durationWeeks  Int
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   modules Module[]
   batches Batch[]
   skills  CourseSkill[]
   knowledge KnowledgeSource[]
+
+  @@index([organizationId])
 }
 
 model Module {
@@ -182,24 +214,28 @@ model ModuleSkill {
 }
 
 model Batch {
-  id           String      @id @default(cuid())
-  code         String      @unique
-  name         String
-  courseId     String
-  course       Course      @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  instructorId String
-  instructor   Instructor  @relation(fields: [instructorId], references: [id])
-  startDate    DateTime
-  endDate      DateTime
-  schedule     String
-  capacity     Int
-  status       BatchStatus
+  id             String        @id @default(cuid())
+  code           String        @unique
+  name           String
+  courseId       String
+  course         Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  instructorId   String
+  instructor     Instructor    @relation(fields: [instructorId], references: [id])
+  startDate      DateTime
+  endDate        DateTime
+  schedule       String
+  capacity       Int
+  status         BatchStatus
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   enrollments Enrollment[]
   sessions    ClassSession[]
   assignments Assignment[]
   assessments Assessment[]
   schedules   Schedule[]
+
+  @@index([organizationId])
 }
 
 model Enrollment {
@@ -359,13 +395,17 @@ model AiInsight {
 // Scheduling models --------------------------------------------------
 
 model Classroom {
-  id       String @id @default(cuid())
-  name     String @unique
-  building String
-  capacity Int
-  hasTech  Boolean @default(true)
+  id             String        @id @default(cuid())
+  name           String        @unique
+  building       String
+  capacity       Int
+  hasTech        Boolean       @default(true)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   schedules Schedule[]
+
+  @@index([organizationId])
 }
 
 model Schedule {

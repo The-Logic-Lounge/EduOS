@@ -41,8 +41,9 @@ export type CourseChoice = {
 };
 
 /** All batches for the management list. */
-export async function getBatches(): Promise<BatchRow[]> {
+export async function getBatches(orgId?: string): Promise<BatchRow[]> {
   const rows = await db.batch.findMany({
+    where: orgId ? { organizationId: orgId } : {},
     orderBy: [{ status: "asc" }, { startDate: "desc" }],
     include: {
       course: { select: { id: true, code: true, title: true } },
@@ -92,8 +93,9 @@ export async function getBatch(id: string) {
 }
 
 /** Batches for dropdowns (enrolment, filters, etc.). */
-export async function batchOptions(): Promise<BatchChoice[]> {
+export async function batchOptions(orgId?: string): Promise<BatchChoice[]> {
   const rows = await db.batch.findMany({
+    where: orgId ? { organizationId: orgId } : {},
     orderBy: { code: "asc" },
     select: {
       id: true,
@@ -115,8 +117,9 @@ export async function batchOptions(): Promise<BatchChoice[]> {
 }
 
 /** Active instructors for batch assignment. */
-export async function instructorOptions(): Promise<InstructorChoice[]> {
+export async function instructorOptions(orgId?: string): Promise<InstructorChoice[]> {
   const rows = await db.instructor.findMany({
+    where: orgId ? { organizationId: orgId } : {},
     orderBy: { employeeNo: "asc" },
     select: { id: true, employeeNo: true, user: { select: { name: true } } },
   });
@@ -124,8 +127,9 @@ export async function instructorOptions(): Promise<InstructorChoice[]> {
 }
 
 /** Courses that can have a batch. */
-export async function courseOptions(): Promise<CourseChoice[]> {
+export async function courseOptions(orgId?: string): Promise<CourseChoice[]> {
   const rows = await db.course.findMany({
+    where: orgId ? { organizationId: orgId } : {},
     orderBy: { code: "asc" },
     select: { id: true, code: true, title: true },
   });

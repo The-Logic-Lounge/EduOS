@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { requireRole } from "@/lib/auth";
+import { requireRole, orgWhere } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 import { InstructorCreate, zodMessage } from "@/lib/schemas/instructor";
 
@@ -10,8 +10,9 @@ export const dynamic = "force-dynamic";
 /** GET /api/instructors — list all instructors for management. */
 export async function GET() {
   try {
-    await requireRole("MANAGEMENT");
+    const user = await requireRole("MANAGEMENT");
     const rows = await db.instructor.findMany({
+      where: orgWhere(user),
       orderBy: { employeeNo: "asc" },
       select: {
         id: true,
@@ -43,25 +44,27 @@ export async function GET() {
 /** POST /api/instructors — create a new instructor login and profile. */
 export async function POST(req: Request) {
   try {
-    await requireRole("MANAGEMENT");
+    const user = await requireRole("MANAGEMENT");
 
     const parsed = InstructorCreate.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return fail(zodMessage(parsed.error), 400);
     const { name, email, password, employeeNo, specialization, bio } = parsed.data;
 
     const passwordHash = await bcrypt.hash(password, 10);
+    const tenant = orgWhere(user);
     const instructor = await db.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: { name, email, passwordHash, role: "INSTRUCTOR" },
+      const newUser = await tx.user.create({
+        data: { name, email, passwordHash, role: "INSTRUCTOR", ...tenant },
         select: { id: true },
       });
       return tx.instructor.create({
         data: {
-          userId: user.id,
+          userId: newUser.id,
           employeeNo: employeeNo.toUpperCase(),
           specialization,
           bio,
           joinedAt: new Date(),
+          ...tenant,
         },
         select: { id: true },
       });

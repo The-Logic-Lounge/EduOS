@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { requireRole } from "@/lib/auth";
+import { requireRole, orgWhere } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 import { listStudents, nextRollNo, backfillEnrollment } from "@/lib/students";
 import { StudentCreate, zodMessage } from "@/lib/schemas/student";
@@ -23,6 +23,7 @@ export async function GET(req: Request) {
       batchId: params.get("batchId") ?? undefined,
       // An instructor's roster is only the students in the batches they teach.
       instructorId: user.role === "INSTRUCTOR" ? user.instructorId ?? "" : undefined,
+      organizationId: user.organizationId,
       limit: Math.max(num("limit", 100, 500), 1),
       offset: num("offset", 0, 100_000),
     });
@@ -35,7 +36,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    await requireRole("MANAGEMENT");
+    const user = await requireRole("MANAGEMENT");
 
     const parsed = StudentCreate.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return fail(zodMessage(parsed.error), 400);
@@ -52,15 +53,16 @@ export async function POST(req: Request) {
 
     const rollNo = parsed.data.rollNo ?? (await nextRollNo());
     const passwordHash = await bcrypt.hash(password, 10);
+    const tenant = orgWhere(user);
 
     // One transaction: a failed Student insert must not leave an orphan User behind.
     const student = await db.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: { name, email, passwordHash, role: "STUDENT" },
+      const newUser = await tx.user.create({
+        data: { name, email, passwordHash, role: "STUDENT", ...tenant },
         select: { id: true },
       });
       const created = await tx.student.create({
-        data: { userId: user.id, rollNo, phone, city, education, joinedAt: new Date() },
+        data: { userId: newUser.id, rollNo, phone, city, education, joinedAt: new Date(), ...tenant },
         select: { id: true, rollNo: true },
       });
       if (batchId) {

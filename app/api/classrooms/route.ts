@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { requireRole } from "@/lib/auth";
+import { requireRole, orgWhere } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 
 const ClassroomIn = z.object({
@@ -12,8 +12,9 @@ const ClassroomIn = z.object({
 
 export async function GET() {
   try {
-    await requireRole("MANAGEMENT");
+    const user = await requireRole("MANAGEMENT");
     const classrooms = await db.classroom.findMany({
+      where: orgWhere(user),
       orderBy: { name: "asc" },
       include: { _count: { select: { schedules: true } } },
     });
@@ -25,12 +26,12 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    await requireRole("MANAGEMENT");
+    const user = await requireRole("MANAGEMENT");
     const parsed = ClassroomIn.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
       return fail(parsed.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`).join("; "), 422);
     }
-    const classroom = await db.classroom.create({ data: parsed.data });
+    const classroom = await db.classroom.create({ data: { ...parsed.data, ...orgWhere(user) } });
     return ok(classroom);
   } catch (error) {
     return handleApiError(error);
