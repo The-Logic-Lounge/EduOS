@@ -170,11 +170,15 @@ export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) =>
   return out;
 }
 
-export async function studentRows(limit = 100): Promise<{ rows: StudentRow[]; total: number }> {
+export async function studentRows(
+  limit = 100,
+  cursor?: string,
+): Promise<{ rows: StudentRow[]; total: number; nextCursor: string | null }> {
   const [total, students] = await Promise.all([
     db.student.count(),
     db.student.findMany({
-      take: limit,
+      take: limit + 1,
+      ...(cursor ? { cursor: { rollNo: cursor }, skip: 1 } : {}),
       orderBy: { rollNo: "asc" },
       select: {
         id: true,
@@ -186,8 +190,11 @@ export async function studentRows(limit = 100): Promise<{ rows: StudentRow[]; to
     }),
   ]);
 
-  const perfMap = await studentOverallPerformanceMany(students.map((s) => s.id));
-  const rows = students.map((s) => ({
+  const hasMore = students.length > limit;
+  const page = hasMore ? students.slice(0, limit) : students;
+
+  const perfMap = await studentOverallPerformanceMany(page.map((s) => s.id));
+  const rows = page.map((s) => ({
     id: s.id,
     name: s.user.name,
     rollNo: s.rollNo,
@@ -195,7 +202,7 @@ export async function studentRows(limit = 100): Promise<{ rows: StudentRow[]; to
     batches: s.enrollments.map((e) => e.batch.code),
     perf: perfMap.get(s.id) ?? { overall: 0, assessmentPct: 0, assignmentPct: 0, attendancePct: 0, sampleSize: 0 },
   }));
-  return { rows, total };
+  return { rows, total, nextCursor: hasMore ? page[page.length - 1].rollNo : null };
 }
 
 /** Most-attained skills vs most-common gaps, institute-wide. Gaps come from skillGaps(). */
@@ -239,7 +246,17 @@ export async function attendanceDistribution() {
   return rows.map((r) => ({ status: r.status as string, count: r._count._all }));
 }
 
+let _overviewCache: { at: number; data: ManagementOverview } | null = null;
+const OVERVIEW_TTL_MS = 60_000;
+
+export function invalidateOverviewCache() {
+  _overviewCache = null;
+}
+
 export async function managementOverview(): Promise<ManagementOverview> {
+  if (_overviewCache && Date.now() - _overviewCache.at < OVERVIEW_TTL_MS) {
+    return _overviewCache.data;
+  }
   // Fetch all batch IDs once, compute performance once, then derive every row from
   // the same map. This cuts the query count from ~18 (three batchPerformanceMany
   // calls of 3 queries each) to ~10.
@@ -330,5 +347,7 @@ export async function managementOverview(): Promise<ManagementOverview> {
     skillStats(),
   ]);
 
-  return { summary, courses, batches, instructors, attendance, skills };
+  const result: ManagementOverview = { summary, courses, batches, instructors, attendance, skills };
+  _overviewCache = { at: Date.now(), data: result };
+  return result;
 }
