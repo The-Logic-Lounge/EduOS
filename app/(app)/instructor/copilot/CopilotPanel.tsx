@@ -192,7 +192,7 @@ export default function CopilotPanel({
       {/* Chat messages */}
       <div className="flex flex-col gap-4">
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} msg={msg} fallbackWeak={fallbackWeak} />
+          <MessageBubble key={msg.id} msg={msg} fallbackWeak={fallbackWeak} batchId={batchId} />
         ))}
         {loading && (
           <div className="flex items-center gap-2">
@@ -229,9 +229,11 @@ export default function CopilotPanel({
 function MessageBubble({
   msg,
   fallbackWeak,
+  batchId,
 }: {
   msg: ChatMsg;
   fallbackWeak: { moduleId: string; title: string; avgPct: number }[];
+  batchId?: string;
 }) {
   if (msg.role === "user") {
     return (
@@ -257,7 +259,7 @@ function MessageBubble({
   if ((msg.kind === "quiz" || msg.kind === "assessment" || msg.kind === "revision") && msg.data) {
     return (
       <Card label={msg.text}>
-        <GeneratedContent data={msg.data} kind={msg.kind ?? ""} />
+        <GeneratedContent data={msg.data} kind={msg.kind ?? ""} batchId={batchId} />
       </Card>
     );
   }
@@ -394,10 +396,68 @@ function StudentContent({ data }: { data: Json }) {
   );
 }
 
-function GeneratedContent({ data, kind }: { data: Json; kind: string }) {
+function GeneratedContent({ data, kind, batchId }: { data: Json; kind: string; batchId?: string }) {
   const inner = (data.data as Json) ?? data;
   const questions = asList(inner.questions);
   const plan = asList(inner.plan);
+  const [saving, setSaving] = useState(false);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [type, setType] = useState<"QUIZ" | "MIDTERM" | "FINAL" | "PROJECT" | "LAB">(
+    kind === "quiz" ? "QUIZ" : kind === "assessment" ? "MIDTERM" : "QUIZ",
+  );
+  const scheduledDefault = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 3);
+    d.setHours(10, 0, 0, 0);
+    return d.toISOString().slice(0, 16);
+  })();
+  const [scheduledAt, setScheduledAt] = useState<string>(scheduledDefault);
+
+  const canSave =
+    !!batchId &&
+    (kind === "quiz" || kind === "assessment") &&
+    questions.length > 0 &&
+    !savedId;
+
+  const totalMarks = questions.reduce((sum, q) => sum + (typeof q.marks === "number" ? q.marks : 0), 0);
+  const maxScore = totalMarks > 0 ? totalMarks : questions.length * 5;
+
+  async function saveAssessment() {
+    if (!batchId) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const iso = new Date(scheduledAt).toISOString();
+      const title = String(inner.title ?? `${type} — generated`);
+      const res = await fetch("/api/assessments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          batchId,
+          title,
+          type,
+          maxScore,
+          scheduledAt: iso,
+          questions: questions.map((q) => ({
+            q: String(q.q ?? q),
+            a: String(q.a ?? ""),
+            marks: typeof q.marks === "number" ? q.marks : 0,
+          })),
+        }),
+      });
+      const json = (await res.json()) as { success?: boolean; data?: { id?: string }; error?: string };
+      if (!res.ok || !json.success) {
+        setSaveError(String(json.error ?? `Save failed (${res.status})`));
+        return;
+      }
+      setSavedId(json.data?.id ?? "saved");
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -445,6 +505,49 @@ function GeneratedContent({ data, kind }: { data: Json; kind: string }) {
         </div>
       )}
       {String(inner.message ?? "") && <p className="text-sm text-ink-2">{String(inner.message)}</p>}
+
+      {canSave && (
+        <div className="flex flex-wrap items-end gap-3 border-t border-hairline pt-3">
+          <div className="flex flex-col">
+            <label className="text-[0.6875rem] uppercase tracking-wider text-ink-3">Type</label>
+            <select
+              className="border border-hairline-2 rounded-sm bg-surface px-2 py-1 text-sm text-ink focus:border-accent focus:outline-none"
+              value={type}
+              onChange={(e) => setType(e.target.value as typeof type)}
+              disabled={saving}
+            >
+              <option value="QUIZ">Quiz</option>
+              <option value="MIDTERM">Midterm</option>
+              <option value="FINAL">Final</option>
+              <option value="PROJECT">Project</option>
+              <option value="LAB">Lab</option>
+            </select>
+          </div>
+          <div className="flex flex-col">
+            <label className="text-[0.6875rem] uppercase tracking-wider text-ink-3">Scheduled</label>
+            <input
+              type="datetime-local"
+              className="border border-hairline-2 rounded-sm bg-surface px-2 py-1 text-sm text-ink focus:border-accent focus:outline-none"
+              value={scheduledAt}
+              onChange={(e) => setScheduledAt(e.target.value)}
+              disabled={saving}
+            />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[0.6875rem] uppercase tracking-wider text-ink-3">Max score</span>
+            <span className="mono text-sm text-ink">{maxScore}</span>
+          </div>
+          <Button variant="primary" size="sm" disabled={saving} onClick={() => void saveAssessment()}>
+            {saving ? "Saving…" : "Save assessment"}
+          </Button>
+          {saveError && <span className="text-xs text-danger">{saveError}</span>}
+        </div>
+      )}
+      {savedId && (
+        <p className="border border-success/30 bg-success-soft rounded-sm px-3 py-2 text-xs text-success">
+          Saved as a real assessment. Students have been notified.
+        </p>
+      )}
     </div>
   );
 }
