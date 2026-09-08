@@ -16,7 +16,7 @@ echo "→ deploying..."
 URL=$(npx vercel --prod --yes --scope "$SCOPE" 2>&1 | python3 -c "import sys,json,re
 t=sys.stdin.read()
 m=re.search(r'\"url\":\s*\"([^\"]+)\"', t)
-print(m.group(1) if m else '')")
+print(re.sub(r"^https?://", "", m.group(1)) if m else "")
 
 [ -z "$URL" ] && { echo "✗ deploy failed — no URL returned"; exit 1; }
 echo "→ deployed: https://$URL"
