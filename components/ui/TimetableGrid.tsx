@@ -76,8 +76,8 @@ export default function TimetableGrid({ entries, showInstructor = true, showClas
           ))}
 
           {slots.map((time) => (
-            <>
-              <div key={`time-${time}`} className="border-b border-r border-hairline px-2 py-2 text-center">
+            <div key={time} className="contents">
+              <div className="border-b border-r border-hairline px-2 py-2 text-center">
                 <span className="mono text-xs text-ink-3">{time}</span>
               </div>
               {DAYS.map((day) => {
@@ -110,7 +110,7 @@ export default function TimetableGrid({ entries, showInstructor = true, showClas
                   </div>
                 );
               })}
-            </>
+            </div>
           ))}
         </div>
       </div>
