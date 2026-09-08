@@ -8,7 +8,13 @@ Team: Basim · Shan · Muneeb.
 student record is used, and this project shares nothing with the live GSS school apps.
 
 ## Live
-- Production: https://edu-os-abdullah-basims-projects.vercel.app
+- Production: **https://eduos.vercel.app** (also `edu-os-dusky.vercel.app`)
+- Deploy with **`npm run deploy`**, never bare `vercel --prod`. Two reasons: the CLI needs
+  `--scope abdullah-basims-projects` or it fails "Not authorized", and `eduos.vercel.app` is a
+  *deployment* alias (Vercel forbids `*.vercel.app` as a project domain), so it stays pinned to
+  the old build unless it is re-pointed. `scripts/deploy.sh` does both, then smokes the result.
+- Schema changes need the **session** pooler (`:5432`, no `pgbouncer=true`). `prisma db push`
+  hangs forever against the transaction pooler on `:6543`.
 - DB: dedicated Supabase project (ap-southeast-1) — ref and credentials in `.env`, never committed, **transaction
   pooler on :6543** with `pgbouncer=true` — session mode caps at 15 clients and 500s the
   management pages under fan-out.

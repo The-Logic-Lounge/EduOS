@@ -10,7 +10,8 @@
     "db:seed": "node --env-file=.env prisma/seed.mjs",
     "check": "node --env-file=.env scripts/check-consistency.mjs",
     "smoke": "node scripts/smoke.mjs",
-    "test": "vitest"
+    "test": "vitest",
+    "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",
