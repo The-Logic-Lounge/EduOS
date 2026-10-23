@@ -46,7 +46,7 @@ Auth is bcrypt + a signed JWT cookie (`jose`) — no external auth provider.
    is its only writer.
 2. **The AI never touches the database.** It sees a compact JSON context built by
    `lib/ai/context/*` from `analytics.ts`. The Command Center uses tool calling over the
-   9-function allowlist in `lib/ai/tools.ts` — never NL→SQL — so it cannot invent a query
+   17-tool allowlist in `lib/ai/tools.ts` — never NL→SQL — so it cannot invent a query
    or a statistic. Every feature in `lib/ai/features.ts` returns
    `{ source: "ai" | "fallback", data }` and **never throws**: `AI_ENABLED=false`, a missing
    key, a 500 or unparseable JSON all still render real computed content.

@@ -65,8 +65,8 @@ Open these tabs before going on stage, each already signed in, so no typing happ
   request.
 - **The before/after**: *"Production ran its functions in Washington against a database in
   Singapore, so every query crossed the Pacific. Pinning the region took the warm public
-  API from ~1.8 s to `<AFTER>` and the full smoke run from 7.5 minutes to `<AFTER>`."*
-  (Fill both from `docs/audits/EDUOS_PERFORMANCE_REPORT.md` after the deploy.)
+  API from 1.8 seconds to under 0.2, and our full end-to-end test run from six and a half
+  minutes to under fifty seconds."* (Measured 2026-10-23: 1.83 s → 179 ms; 380.7 s → 48.5 s.)
 - **Access denied** counter: the cross-tenant attempt from the last step shows up here.
 
 ## 5:25 — Close (35 s)

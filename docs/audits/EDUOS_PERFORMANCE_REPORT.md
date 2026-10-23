@@ -3,6 +3,7 @@
 2026-10-23. Baseline: `docs/audits/EDUOS_PERFORMANCE_BASELINE.md`. Load test detail:
 `docs/testing/EDUOS_LOAD_TEST_REPORT.md`.
 
+**Update 2026-10-23: deployed.** Production numbers are in the post-deploy table below. The original note follows:
 **Nothing on this branch is deployed.** Every "after" number was measured on this Mac against a
 local production build and a scratch Postgres on localhost. No production number has changed yet,
 and none is claimed.
@@ -41,16 +42,16 @@ flowchart LR
 - **Verify region without a deploy diff:** System Health exposes `instance.region` from
   `VERCEL_REGION` (`app/api/ops/health/route.ts:16`).
 
-### Post-deploy measurement — TO FILL IN after `npm run deploy` (placeholder, no data yet)
+### Post-deploy measurement — measured 2026-10-23 (deployment `edu-4kfl753pn`, commit `5f7c266`)
 
 | Metric | Before (measured, iad1) | After (sin1) | Command |
 |---|---|---|---|
-| `x-vercel-id` function region | `iad1` | _TBD_ | A |
-| `GET /api/public/courses` cold | 4.26 s | _TBD_ | B (first line after ≥15 min idle) |
-| `GET /api/public/courses` warm (median of 5) | 1.83–1.84 s | _TBD_ | B (lines 2–6) |
-| `instance.region` in `/api/ops/health` | n/a (route is new) | _TBD_ (expect `sin1`) | C |
-| Smoke total wall time | 447 s (first run) | _TBD_ | D |
-| `/api/*` http p50 / p95 over 1 h (OpsEvent) | n/a (no telemetry on `main`) | _TBD_ | E |
+| `x-vercel-id` function region | `iad1` | **`sin1`** (`bom1::sin1::…`); `vercel inspect` lists every λ in [sin1] | A |
+| `GET /api/public/courses` cold | 4.26 s | not measured (deployment was warm when sampled) | B (first line after ≥15 min idle) |
+| `GET /api/public/courses` warm (median of 5) | 1.83–1.84 s | **179 ms** (192, 178, 189, 179, 179) | B (lines 2–6) |
+| `instance.region` in `/api/ops/health` | n/a (route is new) | **`sin1`** | C |
+| Smoke total wall time | 447 s (first run, cold after restore); **380.7 s** like-for-like re-run of the old iad1 deployment on 10-23 | **48.5 s** (56/56 PASS) — **7.8× faster** than the like-for-like run | D |
+| `/api/*` http p50 / p95 over 1 h (OpsEvent) | n/a (no telemetry on `main`) | **p50 79 ms · p95 276 ms · p99 430 ms** (n=45, 0 × 5xx, 0 slow queries) | E |
 
 All five commands are **read-only on application data**, except that logins and API calls write
 `OpsEvent` telemetry. Run them only after the runbook's rollout steps, and with Basim's go-ahead.
