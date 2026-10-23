@@ -19,6 +19,13 @@ const ROUTE_ROLES: { prefix: string; roles: Role[] }[] = [
   { prefix: "/student", roles: ["STUDENT"] },
 ];
 
+/** Remember where the user was going; LoginForm returns them there (same-origin only). */
+function toLogin(req: NextRequest) {
+  const url = new URL("/login", req.url);
+  url.searchParams.set("next", req.nextUrl.pathname + req.nextUrl.search);
+  return NextResponse.redirect(url);
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   // Public marketing homepage must be reachable without a session.
@@ -27,7 +34,7 @@ export async function middleware(req: NextRequest) {
   if (pathname.startsWith("/verify/")) return NextResponse.next();
 
   const token = req.cookies.get(SESSION_COOKIE)?.value;
-  if (!token) return NextResponse.redirect(new URL("/login", req.url));
+  if (!token) return toLogin(req);
 
   let role: Role;
   try {
@@ -37,7 +44,7 @@ export async function middleware(req: NextRequest) {
     if (!payload.organizationId) throw new Error("legacy session");
   } catch {
     // Expired or tampered token — clear cookie and redirect to login
-    const res = NextResponse.redirect(new URL("/login", req.url));
+    const res = toLogin(req);
     res.cookies.delete(SESSION_COOKIE);
     return res;
   }

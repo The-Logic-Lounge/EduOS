@@ -105,7 +105,7 @@ export default function InstructorForm({ instructor }: { instructor?: Instructor
             <input
               required={!editing}
               type="password"
-              minLength={6}
+              minLength={8}
               value={form.password}
               onChange={set("password")}
               placeholder="At least 6 characters"

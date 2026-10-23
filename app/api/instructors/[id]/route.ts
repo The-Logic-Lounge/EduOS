@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { requireRole } from "@/lib/auth";
+import { requireRole, revokeUserSessions } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 import { InstructorUpdate, zodMessage } from "@/lib/schemas/instructor";
 import {
@@ -69,6 +69,8 @@ async function PATCH_(req: Request, { params }: { params: Promise<{ id: string }
         ? [db.instructor.update({ where: { id }, data: instructorData })]
         : []),
     ]);
+    // A password reset by management signs the account out everywhere.
+    if (password !== undefined) await revokeUserSessions(existing.userId);
 
     return ok(await getInstructorDetail(id));
   } catch (error) {
@@ -103,6 +105,7 @@ async function DELETE_(_req: Request, { params }: { params: Promise<{ id: string
     }
 
     await db.user.delete({ where: { id: existing.userId } });
+    await revokeUserSessions(existing.userId);
     return ok({ deleted: true });
   } catch (error) {
     return handleApiError(error);

@@ -9,6 +9,21 @@ const DEMOS = [
   { label: "Management", email: "admin@eduos.pk", tag: "03" },
 ] as const;
 
+/** Where middleware wanted to send the user. Resolved against our origin and rejected unless it
+ *  stays on it, which covers "//evil.com", "/\\evil.com" and tab/newline tricks alike. A path
+ *  the role may not open is bounced to its home by middleware, so no role check is needed. */
+function safeNext(): string | null {
+  const next = new URLSearchParams(window.location.search).get("next");
+  if (!next?.startsWith("/")) return null;
+  try {
+    const url = new URL(next, window.location.origin);
+    if (url.origin !== window.location.origin || url.pathname.startsWith("/login")) return null;
+    return url.pathname + url.search + url.hash;
+  } catch {
+    return null;
+  }
+}
+
 export function LoginForm({ className = "" }: { className?: string }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -23,18 +38,19 @@ export function LoginForm({ className = "" }: { className?: string }) {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: withEmail, password: withPassword }),
+        // Phone keyboards append a space after autocomplete; the server trims too.
+        body: JSON.stringify({ email: withEmail.trim().toLowerCase(), password: withPassword }),
       });
-      const json = await res.json();
-      if (!json.success) {
-        setError(json.error ?? "Sign in failed");
+      const json = await res.json().catch(() => null);
+      if (!json?.success) {
+        setError(json?.error ?? `Sign in failed (${res.status}). Please try again.`);
         setPending(null);
         return;
       }
-      router.push(json.data.home);
+      router.replace(safeNext() ?? json.data.home);
       router.refresh();
     } catch {
-      setError("Network error — is the server running?");
+      setError("Network error — check your connection and try again.");
       setPending(null);
     }
   }

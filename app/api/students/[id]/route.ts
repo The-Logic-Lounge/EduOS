@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { requireRole } from "@/lib/auth";
+import { requireRole, revokeUserSessions } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 import { getStudent, requireStudentAccess } from "@/lib/students";
 import { StudentUpdate, zodMessage } from "@/lib/schemas/student";
@@ -54,6 +54,8 @@ async function PATCH_(req: Request, { params }: { params: Promise<{ id: string }
         ? [db.student.update({ where: { id }, data: studentData })]
         : []),
     ]);
+    // A password reset by management signs the account out everywhere.
+    if (password !== undefined) await revokeUserSessions(existing.userId);
 
     return ok(await getStudent(id));
   } catch (error) {
@@ -88,6 +90,7 @@ async function DELETE_(_req: Request, { params }: { params: Promise<{ id: string
     }
 
     await db.user.delete({ where: { id: existing.userId } });
+    await revokeUserSessions(existing.userId);
     return ok({ id, deleted: true });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {

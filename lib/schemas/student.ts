@@ -1,10 +1,10 @@
 import { z } from "zod";
+import { emailField as email } from "./email";
 
 /** Validation for student registration and updates. The API routes' only trust boundary. */
 
 const name = z.string().trim().min(2, "Name must be 2-80 characters").max(80, "Name must be 2-80 characters");
-const email = z.string().trim().toLowerCase().email("Enter a valid email address").max(160);
-const password = z.string().min(6, "Password must be at least 6 characters").max(200);
+const password = z.string().min(8, "Password must be at least 8 characters").max(200);
 const rollNo = z
   .string()
   .trim()

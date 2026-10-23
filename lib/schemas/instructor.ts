@@ -1,8 +1,8 @@
 import { z } from "zod";
+import { emailField as email } from "./email";
 
 const name = z.string().trim().min(2, "Name must be 2-80 characters").max(80);
-const email = z.string().trim().toLowerCase().email("Enter a valid email address").max(160);
-const password = z.string().min(6, "Password must be at least 6 characters").max(200);
+const password = z.string().min(8, "Password must be at least 8 characters").max(200);
 const employeeNo = z
   .string()
   .trim()

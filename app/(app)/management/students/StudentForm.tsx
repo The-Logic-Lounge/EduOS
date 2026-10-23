@@ -115,7 +115,7 @@ export default function StudentForm({
             <input
               required={!editing}
               type="password"
-              minLength={6}
+              minLength={8}
               value={form.password}
               onChange={set("password")}
               placeholder="At least 6 characters"
