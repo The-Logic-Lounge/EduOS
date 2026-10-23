@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>EDUOS — P00733</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&family=Noto+Nastaliq+Urdu:wght@500&display=swap" rel="stylesheet">
+<style>
+  @page { size: 1600px 900px; margin: 0; }
+  :root {
+    --paper: oklch(97.8% 0.006 95); --surface: #fff; --ink: oklch(19% 0.02 255); --ink2: oklch(43% 0.018 255);
+    --ink3: oklch(60% 0.014 255); --hair: oklch(88% 0.008 255); --accent: oklch(48% 0.115 215);
+    --accent-soft: oklch(94% 0.032 215); --signal: oklch(68% 0.165 55); --ok: oklch(56% 0.128 152); --bad: oklch(55% 0.185 27);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--paper); color: var(--ink); font-family: Inter, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .s { width: 1600px; height: 900px; padding: 72px 96px; position: relative; page-break-after: always; overflow: hidden;
+       background: var(--paper) repeating-linear-gradient(90deg, transparent 0 79px, oklch(93% 0.006 95) 79px 80px); }
+  .kicker { font: 600 15px Inter; letter-spacing: .16em; text-transform: uppercase; color: var(--signal); }
+  h1 { font: 700 92px/0.95 "Space Grotesk"; letter-spacing: -.035em; margin-top: 22px; }
+  h2 { font: 700 60px/1.02 "Space Grotesk"; letter-spacing: -.03em; margin-top: 18px; max-width: 1250px; }
+  .lede { font-size: 26px; line-height: 1.45; color: var(--ink2); margin-top: 26px; max-width: 1100px; }
+  .accent { color: var(--accent); }
+  .foot { position: absolute; left: 96px; right: 96px; bottom: 44px; display: flex; justify-content: space-between;
+          font: 500 15px "JetBrains Mono"; color: var(--ink3); border-top: 1px solid var(--hair); padding-top: 14px; }
+  .q { font: 500 15px "JetBrains Mono"; color: var(--accent); background: var(--accent-soft); padding: 4px 10px; border-radius: 3px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin-top: 48px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; margin-top: 44px; }
+  .card { background: var(--surface); border: 1px solid var(--hair); border-radius: 5px; padding: 30px 32px; }
+  .card .t { font: 700 26px "Space Grotesk"; letter-spacing: -.01em; }
+  .card p { font-size: 19px; line-height: 1.5; color: var(--ink2); margin-top: 12px; }
+  .big { font: 700 84px/1 "Space Grotesk"; letter-spacing: -.03em; }
+  .big small { font: 500 22px Inter; color: var(--ink3); letter-spacing: 0; display: block; margin-top: 10px; }
+  .flow { display: flex; align-items: stretch; gap: 0; margin-top: 64px; }
+  .step { flex: 1; background: var(--surface); border: 1px solid var(--hair); padding: 26px 22px; position: relative; }
+  .step + .step { border-left: none; }
+  .step .n { font: 500 14px "JetBrains Mono"; color: var(--ink3); }
+  .step .t { font: 700 24px/1.15 "Space Grotesk"; margin-top: 10px; }
+  .step .who { font: 600 13px Inter; letter-spacing: .12em; text-transform: uppercase; margin-top: 16px; }
+  .step .m { font: 500 14px "JetBrains Mono"; color: var(--accent); margin-top: 8px; }
+  .trainer { color: var(--signal); } .student { color: var(--accent); } .mgmt { color: var(--ok); }
+  table { width: 100%; border-collapse: collapse; margin-top: 40px; font-size: 20px; }
+  th { text-align: left; font: 600 14px Inter; letter-spacing: .14em; text-transform: uppercase; color: var(--ink3); padding: 12px 16px; border-bottom: 1px solid var(--hair); }
+  td { padding: 18px 16px; border-bottom: 1px solid var(--hair); vertical-align: top; line-height: 1.4; }
+  td.y { color: var(--ok); font-weight: 600; } td.n { color: var(--ink3); }
+  .mono { font-family: "JetBrains Mono"; }
+  .ur { font-family: "Noto Nastaliq Urdu", serif; direction: rtl; font-size: 30px; line-height: 2; color: var(--ink); }
+  .tag { display: inline-block; font: 600 13px Inter; letter-spacing: .1em; text-transform: uppercase; padding: 5px 10px; border-radius: 3px; border: 1px solid; }
+  .tag.ok { color: var(--ok); border-color: color-mix(in oklch, var(--ok) 35%, transparent); background: color-mix(in oklch, var(--ok) 9%, white); }
+  .tag.pl { color: var(--ink2); border-color: var(--hair); background: var(--surface); }
+</style>
+</head>
+<body>
+
+<!-- 1 — Title -->
+<section class="s">
+  <div class="kicker">Alibaba Cloud AI Hackathon 2026 · Education · Project P00733</div>
+  <h1 style="font-size:150px;margin-top:70px">EDU<span class="accent">OS</span></h1>
+  <p class="lede" style="font-size:40px;color:var(--ink);max-width:1300px;margin-top:34px">Find the gap. Fix it. Prove it. <span class="accent">Earn from it.</span></p>
+  <p class="lede">An AI-native operating system for free IT training institutes, built for Bano Qabil and running on Alibaba Cloud Model Studio.</p>
+  <div class="foot"><span>Basim · Shan · Muneeb</span><span>eduos.vercel.app</span><span>P00733</span></div>
+</section>
+
+<!-- 2 — Problem -->
+<section class="s">
+  <span class="q">Q1 · the problem and who faces it</span>
+  <h2>A trainer, a batch of 100, a pile of paper — and a total that hides the gap.</h2>
+  <div class="grid3">
+    <div class="card"><div class="big">1.6M+<small>registered learners at Bano Qabil, 70 cities, ~40% women</small></div></div>
+    <div class="card"><div class="big">31/50<small>is all a marked paper says. Not <i>which concept</i> each student is missing.</small></div></div>
+    <div class="card"><div class="big">10–12%<small>of Pakistani IT graduates are job-ready on day one (PBC). Free certificates aren't trusted.</small></div></div>
+  </div>
+  <div class="foot"><span>Sources: Bano Qabil · Pakistan Business Council · P@SHA</span><span>P00733</span></div>
+</section>
+
+<!-- 3 — Flow -->
+<section class="s">
+  <span class="q">Q3 · one concept, start to result</span>
+  <h2>One gap, followed across three people.</h2>
+  <div class="flow">
+    <div class="step"><div class="n">01</div><div class="t">Photograph the answer sheet</div><div class="who trainer">Trainer</div><div class="m">qwen3-vl-plus</div></div>
+    <div class="step"><div class="n">02</div><div class="t">Per-question marks, trainer confirms</div><div class="who trainer">Trainer</div><div class="m">human in the loop</div></div>
+    <div class="step"><div class="n">03</div><div class="t">Re-teach groups by concept</div><div class="who trainer">Trainer</div><div class="m">gap engine</div></div>
+    <div class="step"><div class="n">04</div><div class="t">Targeted practice, in Urdu</div><div class="who student">Student</div><div class="m">qwen-plus · qwen-mt</div></div>
+    <div class="step"><div class="n">05</div><div class="t">Viva → Passport <b>Verified</b></div><div class="who student">Student</div><div class="m">adaptive qwen-plus</div></div>
+    <div class="step"><div class="n">06</div><div class="t">First gig + proposal from real evidence</div><div class="who student">Student</div><div class="m">grounded output</div></div>
+    <div class="step"><div class="n">07</div><div class="t">Institute-wide gap map</div><div class="who mgmt">Management</div><div class="m">tenant-isolated</div></div>
+  </div>
+  <p class="lede" style="margin-top:56px">Live in the demo: a real handwritten sheet → Ali Hassan's new gap → his viva → his first gig → the director's map.</p>
+  <div class="foot"><span>Built and live at eduos.vercel.app</span><span>P00733</span></div>
+</section>
+
+<!-- 4 — Pakistan -->
+<section class="s">
+  <span class="q">Q2 · why it has to be built for Pakistan</span>
+  <h2>Design choices you can see on screen.</h2>
+  <div class="grid3">
+    <div class="card"><div class="t">Paper first</div><p>Classes run on paper. EDUOS reads handwritten sheets from a phone photo — students need no device at all.</p></div>
+    <div class="card"><div class="t">Urdu, the way we teach</div><p>Qwen-MT translates to Urdu while a glossary keeps <span class="mono">Python · set · loop</span> in English.</p>
+      <p class="ur">آپ کا سب سے کمزور تصور Python میں loops ہے۔</p></div>
+    <div class="card"><div class="t">Low bandwidth, low cost</div><p>Photos shrink on the phone before upload. Marking one answer sheet costs about <b>Rs&nbsp;0.23</b>, measured.</p></div>
+  </div>
+  <div class="foot"><span>Measured on Alibaba Model Studio (Singapore), qwen3-vl-plus, 1,696 tokens per sheet</span><span>P00733</span></div>
+</section>
+
+<!-- 5 — AI -->
+<section class="s">
+  <span class="q">Q5 · what the AI does, and why it's needed</span>
+  <h2>Three Qwen models, each doing work rules can't.</h2>
+  <table>
+    <tr><th style="width:24%">Model (Model Studio)</th><th style="width:40%">Job</th><th>Guardrail</th></tr>
+    <tr><td class="mono">qwen3-vl-plus</td><td>Reads handwriting, marks each answer against the key with a reason</td><td>Trainer confirms every mark; handwriting is treated as data, never instructions</td></tr>
+    <tr><td class="mono">qwen-plus</td><td>Targeted practice · adaptive viva · gig proposal · copilot · command center</td><td>Numbers checked by the grounding guard; tool calls over a 17-tool allowlist, no NL→SQL</td></tr>
+    <tr><td class="mono">qwen-mt-flash</td><td>Urdu explanations with an English technical glossary</td><td>Translation runs after the guard, so meaning is checked first</td></tr>
+  </table>
+  <p class="lede" style="font-size:22px">If the model is down, every screen completes on a labelled computed fallback — and a viva can never be "Verified" without Qwen.</p>
+  <div class="foot"><span>AI calls instrumented: latency · outcome · tokens</span><span>P00733</span></div>
+</section>
+
+<!-- 6 — New -->
+<section class="s">
+  <span class="q">Q7 · what's new</span>
+  <h2>Others stop at the gap. EDUOS closes the loop.</h2>
+  <table>
+    <tr><th style="width:28%"></th><th>Reads paper</th><th>Finds concept gaps</th><th>Fixes + re-teaches</th><th>Verifies the skill</th><th>Leads to earning</th></tr>
+    <tr><td>Google Classroom · Moodle</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+    <tr><td>AI tutor chatbots</td><td class="n">—</td><td class="n">partly</td><td class="n">student only</td><td class="n">—</td><td class="n">—</td></tr>
+    <tr><td>ClassMind <span style="color:var(--ink3);font-size:16px">(Alibaba Abu Dhabi winner)</span></td><td class="y">✓</td><td class="y">✓</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+    <tr><td><b>EDUOS</b></td><td class="y">✓</td><td class="y">✓</td><td class="y">✓ trainer + student</td><td class="y">✓ viva</td><td class="y">✓ first gig</td></tr>
+  </table>
+  <div class="foot"><span>Inside a multi-tenant institute OS, not a standalone tool</span><span>P00733</span></div>
+</section>
+
+<!-- 7 — Reach -->
+<section class="s">
+  <span class="q">Q8 · who benefits first, and how it reaches more</span>
+  <h2>One institute today. Every centre is a tenant.</h2>
+  <div class="grid3">
+    <div class="card"><div class="kicker" style="color:var(--accent)">First</div><div class="t" style="margin-top:10px">Bano Qabil trainers & students</div><p>The problem we demo is Shan's own classroom.</p></div>
+    <div class="card"><div class="kicker" style="color:var(--accent)">Next</div><div class="t" style="margin-top:10px">Alibaba Cloud training centres</div><p>Being set up with Bano Qabil in Karachi and Lahore — exactly the institute EDUOS models.</p></div>
+    <div class="card"><div class="kicker" style="color:var(--accent)">Then</div><div class="t" style="margin-top:10px">Alkhidmat's 99 skills centres</div><p>Tenant isolation is live and tested with two institutes: one database query layer, no cross-centre leaks.</p></div>
+  </div>
+  <div class="foot"><span>Isolation proven by automated cross-tenant tests on every change</span><span>P00733</span></div>
+</section>
+
+<!-- 8 — Sustain -->
+<section class="s">
+  <span class="q">Q9 · what it takes to keep running</span>
+  <h2>Cost is measured, not guessed.</h2>
+  <div class="grid3">
+    <div class="card"><div class="big">Rs 0.23<small>to read and mark one answer sheet (qwen3-vl-plus)</small></div></div>
+    <div class="card"><div class="big">≈ Rs 9.5<small>per learner per month at 20 AI chats (qwen-plus); ~12× less on qwen3.7-flash</small></div></div>
+    <div class="card"><div class="big">7.8×<small>faster end-to-end after we moved compute next to the data (380 s → 48 s)</small></div></div>
+  </div>
+  <p class="lede" style="font-size:22px">System Health records every AI call's tokens and latency per request. Upkeep: one small team. Hosting move to Alibaba Cloud (Function Compute + ApsaraDB) is <b>planned</b>.</p>
+  <div class="foot"><span>Prices: Model Studio Singapore list, Oct 2026 · PKR at 280/USD</span><span>P00733</span></div>
+</section>
+
+<!-- 9 — Honest -->
+<section class="s">
+  <span class="q">Q10 · built versus planned</span>
+  <h2>What you saw is built. What we haven't built, we say.</h2>
+  <div class="grid2">
+    <div class="card"><span class="tag ok">Built · tested · live</span>
+      <p style="font-size:20px;line-height:1.75;margin-top:18px">Gap Finder · Viva · First-Earning Copilot · Skill Passport<br>Multi-tenant isolation · System Health · security hardening<br>140+ unit tests · isolation, security and smoke suites<br>Live on Alibaba Model Studio AI</p></div>
+    <div class="card"><span class="tag pl">Planned · not claimed</span>
+      <p style="font-size:20px;line-height:1.75;margin-top:18px">Hosting on Alibaba Cloud (AI already is)<br>Urdu speech — Alibaba ASR doesn't list Urdu yet<br>Urdu handwriting — not yet verified<br>Real placement data — demo data is synthetic</p></div>
+  </div>
+  <div class="foot"><span>Evidence: docs/EDUOS_FINAL_READINESS_REPORT.md</span><span>P00733</span></div>
+</section>
+
+<!-- 10 — Close -->
+<section class="s">
+  <div class="kicker">Project P00733</div>
+  <h1 style="font-size:120px;margin-top:90px">Find the gap.<br>Fix it. Prove it.<br><span class="accent">Earn from it.</span></h1>
+  <div class="foot"><span>EDUOS · Basim · Shan · Muneeb</span><span>eduos.vercel.app</span><span>Thank you</span></div>
+</section>
+
+</body>
+</html>
