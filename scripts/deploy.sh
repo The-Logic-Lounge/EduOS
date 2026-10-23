@@ -15,7 +15,8 @@ SCOPE=abdullah-basims-projects
 DOMAIN=eduos.vercel.app
 VERCEL="$(command -v vercel || echo 'npx vercel')"
 
-PREVIOUS=$($VERCEL inspect "$DOMAIN" --scope "$SCOPE" 2>&1 | sed -n 's/.*url[[:space:]]*\(https:\/\/[^[:space:]]*\).*/\1/p' | head -1)
+# `|| true`: head closing the pipe early must not trip set -e/pipefail.
+PREVIOUS=$({ $VERCEL inspect "$DOMAIN" --scope "$SCOPE" 2>&1 | sed -n 's/.*url[[:space:]]*\(https:\/\/[^[:space:]]*\).*/\1/p' | head -1; } || true)
 echo "-> rollback target (currently live): ${PREVIOUS:-unknown}"
 
 echo "-> building production deployment (not yet promoted)..."
