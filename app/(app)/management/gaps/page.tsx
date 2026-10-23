@@ -54,7 +54,7 @@ export default async function InstituteGapsPage() {
                         <li
                           key={c.concept}
                           className={`flex min-h-[5.5rem] flex-col justify-between border rounded-xs p-2.5 ${BAND_CELL[b.tone]}`}
-                          title={`${c.concept}: ${c.mastery}% · ${b.label} · ${c.studentsBelow} students below ${threshold}%`}
+                          title={`${c.concept}: ${c.mastery}% · ${b.label} · ${c.studentsBelow} below ${threshold}%`}
                         >
                           <span className="line-clamp-2 text-[0.75rem] leading-snug">{c.concept}</span>
                           <span className="mt-2 flex items-end justify-between gap-2">
@@ -85,7 +85,7 @@ export default async function InstituteGapsPage() {
                     <div className="min-w-0">
                       <p className="text-sm leading-snug text-ink">{c.concept}</p>
                       <p className="mt-0.5 text-xs text-ink-3">
-                        <span className="mono">{c.courseCode}</span> · <span className="mono text-ink-2">{c.studentsBelow}</span> students below {threshold}%
+                        <span className="mono">{c.courseCode}</span> · <span className="mono text-ink-2">{c.studentsBelow}</span> {c.studentsBelow === 1 ? "student" : "students"} below {threshold}%
                       </p>
                       <div className="mt-2 flex items-center gap-3">
                         <div className="flex-1"><MasteryBar mastery={c.mastery} threshold={threshold} label={c.concept} /></div>

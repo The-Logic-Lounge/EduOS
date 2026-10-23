@@ -3,7 +3,8 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { currentOrgId } from "@/lib/tenant";
 import { studentOverallPerformance } from "@/lib/analytics";
-import { MODEL, TRANSLATE_MODEL, chatJSON, translateToUrdu, type AiResult } from "@/lib/ai/client";
+import { MODEL, TRANSLATE_MODEL, chatJSON, type AiResult } from "@/lib/ai/client";
+import { urduKeeping } from "@/lib/gaps/server";
 import { groundedAgainst } from "@/lib/ai/guard";
 import { GIGS, gigById, toPkr, type Gig } from "./gigs";
 import { matchGig, rankGigs, type GigMatch } from "./match";
@@ -131,11 +132,11 @@ export type UrduPlan = Omit<Plan, "listing">;
 
 /** Kept in English, the way Pakistani trainers and freelancers actually say them. */
 const KEEP = ["Fiverr", "Upwork", "GitHub", "Behance", "API", "React", "Python", "JavaScript", "SQL", "Excel",
-  "Pandas", "Flutter", "Dart", "SEO", "Amazon", "WordPress", "Shopify", "WooCommerce", "README", "EDUOS", "viva"];
+  "Pandas", "Flutter", "Dart", "SEO", "Amazon", "WordPress", "Shopify", "WooCommerce", "README", "EDUOS", "viva", "Git", "commit", "script", "Fiverr gig"];
 
 const oneLine = (s: string) => s.replace(/\s*\n+\s*/g, " ").trim();
 // Only glossary terms the text actually contains — a long unused list leaks into the output.
-const toUrdu = (text: string, keep: string[]) => translateToUrdu(text, keep.filter((t) => text.includes(t)));
+const toUrdu = (text: string, keep: string[]): Promise<AiResult<string>> => urduKeeping(text, keep.filter((t) => text.toLowerCase().includes(t.toLowerCase())));
 
 /** n lines in, n Urdu lines out. If the model merges or splits lines, each line is translated on its
  *  own, so a section is never left in English under an RTL Urdu layout. */
@@ -249,12 +250,12 @@ export async function earnPlan(
   let urdu: EarnPlan["data"]["urdu"] = null;
   if (language === "ur") {
     const urKey = `${key}:${source}`;
-    const hit = await readCache("earn-plan-ur", urKey);
+    const hit = await readCache("earn-plan-ur2", urKey);
     const cachedUr = hit?.payload as UrduPlan | undefined;
     if (cachedUr?.project && cachedUr.plan && cachedUr.expectations) {
       urdu = { ok: true, model: hit!.model, plan: cachedUr };
     } else {
-      const t = await freshCall("earn-plan-ur", studentId, urKey, TRANSLATE_MODEL(), () => translatePlan(plan, gig.skills.map(([n]) => n)));
+      const t = await freshCall("earn-plan-ur2", studentId, urKey, TRANSLATE_MODEL(), () => translatePlan(plan, gig.skills.map(([n]) => n)));
       urdu = t.ok ? { ok: true, model: TRANSLATE_MODEL(), plan: t.data } : t;
     }
   }

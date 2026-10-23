@@ -4,11 +4,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
-import { LOW_CONFIDENCE, handDraft, type DraftRow, type SheetQuestion } from "@/lib/gaps/core";
+import { LOW_CONFIDENCE, allBlank, handDraft, type DraftRow, type SheetQuestion, type StoredRow } from "@/lib/gaps/core";
 
 type Props = {
   assessments: { id: string; title: string; questions: SheetQuestion[] }[];
   students: { id: string; name: string; rollNo: string }[];
+  /** Saved marking keyed `${assessmentId}:${studentId}` — the starting point for hand marking. */
+  stored: Record<string, StoredRow[]>;
 };
 
 type Photo = { name: string; dataUrl: string; before: number; after: number };
@@ -38,7 +40,7 @@ const REASON: Record<string, string> = {
   rate_limited: "the model is rate-limited",
 };
 
-export default function ScanSheet({ assessments, students }: Props) {
+export default function ScanSheet({ assessments, students, stored }: Props) {
   const router = useRouter();
   const [assessmentId, setAssessmentId] = useState(assessments.at(-1)?.id ?? "");
   const [studentId, setStudentId] = useState(students[0]?.id ?? "");
@@ -90,7 +92,8 @@ export default function ScanSheet({ assessments, students }: Props) {
       });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.success) return setError(json?.error ?? `Could not read the sheet (${res.status}).`);
-      open(json.data.source, json.data.rows, json.data.model, json.data.reason);
+      const d = json.data;
+      open(d.source, d.source === "ai" ? d.rows : handDraft(questions, stored[`${assessmentId}:${studentId}`]), d.model, d.reason);
     } catch {
       setError("Network error — check the connection and try again.");
     } finally {
@@ -212,7 +215,7 @@ export default function ScanSheet({ assessments, students }: Props) {
             <Button onClick={read} disabled={!photos.length || !!busy || !questions.length}>
               {busy === "reading" ? "Reading handwriting…" : busy === "resizing" ? "Resizing…" : "Read sheet with AI"}
             </Button>
-            <Button variant="secondary" onClick={() => { reset(); open("hand", handDraft(questions), null); }} disabled={!!busy || !questions.length}>
+            <Button variant="secondary" onClick={() => { reset(); open("hand", handDraft(questions, stored[`${assessmentId}:${studentId}`]), null); }} disabled={!!busy || !questions.length}>
               Mark by hand
             </Button>
           </div>
@@ -241,6 +244,12 @@ export default function ScanSheet({ assessments, students }: Props) {
             </div>
             <p className="mono text-2xl text-ink" aria-live="polite">{total}<span className="text-ink-3">/{max}</span></p>
           </div>
+
+          {review.source === "ai" && allBlank(review.original) && (
+            <p role="alert" className="mt-3 border-l-2 border-warning bg-warning-soft px-4 py-3 text-sm text-ink">
+              No handwriting was found on this photo. Check it is the right page and in focus, then discard and retake — or type the marks below.
+            </p>
+          )}
 
           <ol className="divide-y divide-hairline">
             {review.rows.map((r, i) => {

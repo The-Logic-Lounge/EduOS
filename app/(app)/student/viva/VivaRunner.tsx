@@ -20,6 +20,7 @@ async function post(url: string, body: unknown): Promise<{ source: "ai" | "fallb
 
 /** "qwen-plus" when a model ran, the fallback label when it did not. */
 function ModelTag({ model, verb }: { model?: string; verb: string }) {
+  if (model === "stored") return <span className="text-[0.7rem] text-ink-3">Question from your assessment bank</span>;
   if (!model || model === "fallback") {
     return (
       <span className="inline-flex items-center gap-2 text-[0.7rem] text-ink-3">
@@ -290,7 +291,7 @@ function VerdictPanel({ view }: { view: VivaView }) {
         </span>
       </div>
       <p className="mt-4 font-display text-[1.15rem] leading-snug tracking-tight text-ink">{view.verdict}</p>
-      {view.provisional && <p className="mt-2 text-xs text-ink-2">{FALLBACK_LABEL}. Your passport is unchanged until a trainer or an AI-graded viva confirms it.</p>}
+      {view.provisional && <p className="mt-2 text-xs text-ink-2">{view.flagged.length ? "An answer was flagged for trainer review" : FALLBACK_LABEL}. Your passport is unchanged until a trainer or an AI-graded viva confirms it.</p>}
       {!stamped && view.practise.length > 0 && (
         <p className="mt-3 text-sm text-ink-2">
           Practise: <span className="text-ink">{view.practise.join(" · ")}</span>

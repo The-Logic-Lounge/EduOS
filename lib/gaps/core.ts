@@ -227,3 +227,29 @@ export function shapeEvidence<T extends { questionId: string; assessment: { id: 
     question: normaliseQuestions(assessment.questions).find((q) => q.id === r.questionId)?.q ?? null,
   }));
 }
+
+// ------------------------------------------------------------------ keep tech terms English
+
+/** Qwen-MT ignores its `terms` glossary for common words ("list" -> لسٹ), so the terms trainers
+ *  say in English are swapped for {n} placeholders before translation and put back after.
+ *  Plurals ride along ("Lists" stays "Lists"); code identifiers (present_set) are left alone. */
+export function shieldTerms(text: string, keep: string[]): { text: string; found: string[] } {
+  const found: string[] = [];
+  const alts = [...new Set(keep.filter(Boolean))].sort((a, b) => b.length - a.length).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  if (!alts.length || /\{\d+\}/.test(text)) return { text, found };
+  // A leading article is dropped ("a {0}"), or the model leaves it untranslated: "A tuple ایک…".
+  const re = new RegExp(`(?:\\b(?:a|an|the)\\s+)?(?<![\\w.])((?:${alts.join("|")})(?:e?s)?)(?![\\w])`, "gi");
+  return { text: text.replace(re, (_m, term: string) => `{${found.push(term) - 1}}`), found };
+}
+
+/** Puts the shielded terms back; null when the translation lost or invented a placeholder. */
+export function unshieldTerms(text: string, found: string[]): string | null {
+  const seen = new Set<number>();
+  const out = text.replace(/\{\s*(\d+)\s*\}/g, (m, i) => {
+    const n = Number(i);
+    if (n >= found.length) return m;
+    seen.add(n);
+    return found[n];
+  });
+  return seen.size === found.length && !/\{\s*\d+\s*\}/.test(out) ? out : null;
+}

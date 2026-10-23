@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   ScanAiSchema, checkImage, checkRows, clampDraft, clampMarks, handDraft, fallbackPractice,
-  masteryBand, normaliseQuestions, resultScore, shapeEvidence,
+  masteryBand, normaliseQuestions, resultScore, shapeEvidence, shieldTerms, unshieldTerms,
 } from "./core";
 
 const KEY = normaliseQuestions([
@@ -115,5 +115,23 @@ describe("shapeEvidence", () => {
   it("swaps the questions blob for the asked question's text", () => {
     const [e] = shapeEvidence([{ questionId: "q2", marks: 1, assessment: { id: "a1", title: "Quiz", questions: [{ id: "q1", q: "A" }, { id: "q2", q: "B" }] } }]);
     expect(e).toEqual({ questionId: "q2", marks: 1, assessmentId: "a1", assessmentTitle: "Quiz", question: "B" });
+  });
+});
+
+describe("shieldTerms / unshieldTerms", () => {
+  const keep = ["Python", "list", "set", "Node.js"];
+  it("swaps terms (plurals, any case) for placeholders and drops a leading article", () => {
+    const s = shieldTerms("A set beats Lists in Python; present_set = set()", keep);
+    expect(s.text).toBe("{0} beats {1} in {2}; present_set = {3}()");
+    expect(s.found).toEqual(["set", "Lists", "Python", "set"]);
+    expect(unshieldTerms("ترجمہ {0} {1} {2} {3}()", s.found)).toBe("ترجمہ set Lists Python set()");
+  });
+  it("rejects a translation that lost or invented a placeholder", () => {
+    expect(unshieldTerms("{0}", ["a", "b"])).toBeNull();
+    expect(unshieldTerms("{0} {1} {2}", ["a", "b"])).toBeNull();
+    expect(unshieldTerms("{ 1 } {0}", ["a", "b"])).toBe("b a");
+  });
+  it("leaves text that already has {n} alone", () => {
+    expect(shieldTerms("f'{0}' in a list", keep)).toEqual({ text: "f'{0}' in a list", found: [] });
   });
 });

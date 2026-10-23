@@ -92,7 +92,7 @@ export default async function VivaTranscriptPage({ params }: { params: Promise<{
               </p>
               <p className="mt-3 text-xs text-ink-3">{t.rationale}</p>
               <p className="mono mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[0.7rem] text-ink-3">
-                <span>question: {t.qModel === "fallback" ? "stored assessment item" : t.qModel}</span>
+                <span>question: {t.qModel === "fallback" || t.qModel === "stored" ? "stored assessment item" : t.qModel}</span>
                 {t.translatedBy && <span>urdu: {t.translatedBy}</span>}
                 <span>graded: {t.model === "fallback" ? "AI unavailable — computed fallback" : t.model}</span>
                 <span>{secs(t.msToAnswer)} to answer</span>

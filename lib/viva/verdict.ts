@@ -119,7 +119,7 @@ export function keywordScore(answer: string, reference: string): number {
 
 // ------------------------------------------------------------ prompt-injection guards
 
-const INJECTION_MARKERS = ["ignore previous", "ignore all", "grader", "score 10", "system prompt", "</answer>", "you are now"]; // narrower than "you are", which honest answers use ("if you are looping…")
+const INJECTION_MARKERS = ["ignore previous", "ignore all", "grader", "examiner", "score 10", "full marks", "maximum marks", "award", "system prompt", "</answer>", "you are now", "پورے نمبر"]; // narrower than "you are", which honest answers use ("if you are looping…")
 
 /**
  * Why an AI grade on this answer must not stamp the passport, or null. A near-perfect score on
@@ -127,9 +127,14 @@ const INJECTION_MARKERS = ["ignore previous", "ignore all", "grader", "score 10"
  * ponytail: phrase blocklist — paraphrase gets past it; the real defence is that the answer
  * reaches the model only as JSON data. This just routes the obvious attempts to a trainer.
  */
-export function suspiciousAnswer(answer: string, score: number): string | null {
+/** The grader-directed phrase an answer contains, or null. */
+export function injectionHit(answer: string): string | null {
   const text = answer.normalize("NFKC").replace(/\p{Cf}/gu, "").toLowerCase().replace(/\s+/g, " ");
-  const hit = INJECTION_MARKERS.find((m) => text.includes(m));
+  return INJECTION_MARKERS.find((m) => text.includes(m)) ?? null;
+}
+
+export function suspiciousAnswer(answer: string, score: number): string | null {
+  const hit = injectionHit(answer);
   if (hit) return `answer contains an instruction-like phrase ("${hit}")`;
   const len = answer.trim().length;
   if (score >= 9 && len < 40) return `scored ${score}/10 on a ${len}-character answer`;

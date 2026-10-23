@@ -2,7 +2,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { requirePageRole } from "@/lib/page-auth";
 import { batchGaps } from "@/lib/analytics";
-import { normaliseQuestions } from "@/lib/gaps/core";
+import { normaliseQuestions, type StoredRow } from "@/lib/gaps/core";
 import { BandBadge, BandLegend, MasteryBar } from "@/lib/gaps/ui";
 import PageHeader from "@/components/ui/PageHeader";
 import StatTile from "@/components/ui/StatTile";
@@ -33,7 +33,7 @@ export default async function GapFinderPage({ searchParams }: { searchParams: Pr
   }
 
   const batch = batches.find((b) => b.id === wanted) ?? batches[0];
-  const [gaps, assessments, roster] = await Promise.all([
+  const [gaps, assessments, roster, stored] = await Promise.all([
     batchGaps(batch.id),
     db.assessment.findMany({
       where: { batchId: batch.id },
@@ -45,7 +45,15 @@ export default async function GapFinderPage({ searchParams }: { searchParams: Pr
       orderBy: { student: { rollNo: "asc" } },
       select: { student: { select: { id: true, rollNo: true, user: { select: { name: true } } } } },
     }),
+    // The saved marking per (assessment, student): "Mark by hand" starts from it, so saving
+    // without edits changes nothing instead of zeroing the student.
+    db.assessmentResponse.findMany({
+      where: { assessment: { batchId: batch.id } },
+      select: { assessmentId: true, studentId: true, questionId: true, answer: true, marks: true, feedback: true },
+    }),
   ]);
+  const storedBy: Record<string, StoredRow[]> = {};
+  for (const { assessmentId, studentId, ...r } of stored) (storedBy[`${assessmentId}:${studentId}`] ??= []).push(r);
 
   const gapConcepts = gaps.concepts.filter((c) => c.isGap || c.studentsBelow.length > 0);
   const secure = gaps.concepts.filter((c) => !c.isGap && c.studentsBelow.length === 0);
@@ -121,8 +129,8 @@ export default async function GapFinderPage({ searchParams }: { searchParams: Pr
                   {c.studentsBelow.length > 0 && (
                     <div className="mt-4 border-l-2 border-signal bg-signal-soft/60 py-3 pl-4 pr-3">
                       <p className="text-sm text-ink">
-                        Re-teach <span className="font-medium">&ldquo;{c.concept}&rdquo;</span> to these{" "}
-                        <span className="mono">{c.studentsBelow.length}</span> {c.studentsBelow.length === 1 ? "student" : "students"}
+                        Re-teach <span className="font-medium">&ldquo;{c.concept}&rdquo;</span> to{" "}
+                        {c.studentsBelow.length === 1 ? "this student" : <>these <span className="mono">{c.studentsBelow.length}</span> students</>}
                       </p>
                       <ul className="mt-3 flex flex-wrap gap-2">
                         {c.studentsBelow.map((s) => (
@@ -162,6 +170,7 @@ export default async function GapFinderPage({ searchParams }: { searchParams: Pr
             key={batch.id}
             assessments={assessments.map((a) => ({ id: a.id, title: a.title, questions: normaliseQuestions(a.questions) }))}
             students={roster.map((e) => ({ id: e.student.id, name: e.student.user.name, rollNo: e.student.rollNo }))}
+            stored={storedBy}
           />
         </Card>
       </section>

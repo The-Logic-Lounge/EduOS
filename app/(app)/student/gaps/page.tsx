@@ -46,7 +46,10 @@ export default async function MyGapsPage() {
                 </h2>
               )}
               {focus.map((c) => {
-                const rows = evidence.filter((e) => e.concept === c.concept).slice(0, 3);
+                // Evidence for a gap = the answers below the line; a 13/16 elsewhere proves nothing.
+                const mine = evidence.filter((e) => e.concept === c.concept);
+                const below = mine.filter((e) => e.maxMarks > 0 && (100 * e.marks) / e.maxMarks < g.threshold);
+                const rows = (below.length ? below : mine).slice(0, 3);
                 const viva = `/student/viva?${new URLSearchParams({ ...(c.skillId ? { skillId: c.skillId } : {}), concept: c.concept })}`;
                 return (
                   <article key={c.concept} className="card overflow-hidden">

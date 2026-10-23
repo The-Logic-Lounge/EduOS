@@ -8,7 +8,7 @@ import { AuthError } from "@/lib/api";
 import type { SessionUser } from "@/lib/auth";
 import { MODEL, VISION_MODEL, TRANSLATE_MODEL, chatJSON, translateToUrdu } from "@/lib/ai/client";
 import {
-  ScanAiSchema, clampDraft, handDraft, fallbackPractice, normaliseQuestions,
+  ScanAiSchema, clampDraft, handDraft, fallbackPractice, normaliseQuestions, shieldTerms, unshieldTerms,
   type DraftRow, type PracticePack, type SheetQuestion,
 } from "./core";
 
@@ -147,7 +147,7 @@ async function remember(kind: string, subject: string, payload: unknown, model: 
 
 /** Terms trainers say in English even when teaching in Urdu. */
 const KEEP_EN = ["Python", "JavaScript", "TypeScript", "React", "Node.js", "API", "HTTP", "JSON", "SQL", "HTML", "CSS",
-  "function", "variable", "loop", "list", "dictionary", "class", "object", "array", "string", "async", "await", "fetch",
+  "function", "variable", "loop", "list", "dict", "dictionary", "set", "tuple", "class", "object", "array", "string", "async", "await", "fetch",
   "promise", "component", "props", "state", "database", "query", "file", "exception", "error", "module", "import", "Git", "Figma", "SEO"];
 
 /** Practice pack for one of the student's own gap concepts. null when the concept has no
@@ -192,11 +192,11 @@ export async function practiceFor(studentId: string, concept: string, lang: "en"
 
   // Urdu: translate the SAME pack (cached English), field by field so structure survives.
   const urKey = `${subject}:${base.source}`;
-  const urHit = await cached("gap_practice_ur", urKey, PracticeSchema);
+  const urHit = await cached("gap_practice_ur2", urKey, PracticeSchema);
   if (urHit) return { ...base, pack: urHit, lang: "ur", urdu: { source: "ai", model: TRANSLATE_MODEL() } };
   const keep = [...KEEP_EN, ...(concept.match(/\w+\(\)|[a-z]+[A-Z]\w*|\w+\/\w+/g) ?? [])]; // code-shaped words: len(), forEach, async/await
   const fields = [...base.pack.lesson.flatMap((l) => [l.title, l.body]), ...base.pack.practice.flatMap((p) => [p.q, p.answer])];
-  const out = await Promise.all(fields.map((f) => translateToUrdu(f, keep)));
+  const out = await Promise.all(fields.map((f) => urduKeeping(f, keep)));
   const bad = out.find((r) => !r.ok);
   if (bad && !bad.ok) return { ...base, lang: "en", urdu: { source: "fallback", model: null, reason: bad.reason } };
   const t = out.map((r) => (r.ok ? r.data : ""));
@@ -205,8 +205,20 @@ export async function practiceFor(studentId: string, concept: string, lang: "en"
     lesson: base.pack.lesson.map((_, i) => ({ title: t[2 * i], body: t[2 * i + 1] })),
     practice: base.pack.practice.map((_, i) => ({ q: t[2 * n + 2 * i], answer: t[2 * n + 2 * i + 1] })),
   };
-  await remember("gap_practice_ur", urKey, pack, TRANSLATE_MODEL());
+  await remember("gap_practice_ur2", urKey, pack, TRANSLATE_MODEL());
   return { ...base, pack, lang: "ur", urdu: { source: "ai", model: TRANSLATE_MODEL() } };
+}
+
+/** Urdu with the given terms left in English (see shieldTerms). Falls back to a plain
+ *  translation if the model mangles a placeholder. Never throws. */
+export async function urduKeeping(text: string, keep: string[]) {
+  // Code-shaped words stay as written too: FolderManager, present_set, len().
+  const code = text.match(/\b[A-Za-z]+[A-Z]\w*|\b\w+_\w+|\b\w+\(\)/g) ?? [];
+  const { text: shielded, found } = shieldTerms(text, [...keep, ...code]);
+  if (!found.length) return translateToUrdu(text, keep);
+  const r = await translateToUrdu(shielded, keep);
+  const back = r.ok ? unshieldTerms(r.data, found) : null;
+  return back ? { ok: true as const, data: back } : translateToUrdu(text, keep);
 }
 
 const trim = (p: PracticePack): PracticePack => ({ lesson: p.lesson.slice(0, 3), practice: p.practice.slice(0, 3) });
