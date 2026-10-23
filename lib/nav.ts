@@ -37,6 +37,7 @@ export const MANAGEMENT_NAV: NavItem[] = [
   { href: "/management/courses", label: "Courses" },
   { href: "/management/gaps", label: "Gap Map" },
   { href: "/management/certs", label: "Cert Pipeline" },
+  { href: "/management/admissions", label: "Admissions" },
   { href: "/management/ask", label: "Ask Edu OS" },
   { href: "/management/timetable", label: "Timetable" },
 ];

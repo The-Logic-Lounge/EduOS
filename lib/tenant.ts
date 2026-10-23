@@ -79,13 +79,15 @@ const SCOPE: Record<string, (o: string) => Where> = {
   assessmentResult: (o) => ({ assessment: byBatch(o) }),
   assessmentResponse: (o) => ({ assessment: byBatch(o) }),
   vivaSession: (o) => ({ student: { organizationId: o } }),
+  entryTest: (o) => ({ organizationId: o }),
+  entryTestSheet: (o) => ({ test: { organizationId: o } }),
   moduleProgress: (o) => ({ enrollment: byBatch(o) }),
   studentSkill: (o) => ({ student: { organizationId: o } }),
   instructorAvailability: (o) => ({ instructor: { organizationId: o } }),
   notification: (o) => ({ user: { organizationId: o } }),
 };
 
-const ROOT = new Set(["user", "student", "instructor", "course", "batch", "classroom"]);
+const ROOT = new Set(["user", "student", "instructor", "course", "batch", "classroom", "entryTest"]);
 
 /** Foreign keys a write may set, and the model each must belong to (same org). */
 const FK: Record<string, string> = {
@@ -102,6 +104,7 @@ const FK: Record<string, string> = {
   enrollmentId: "enrollment",
   sourceId: "knowledgeSource",
   documentId: "knowledgeDocument",
+  testId: "entryTest",
 };
 
 const WHERE_OPS = new Set([

@@ -2,7 +2,8 @@
 // scripts/demo-baseline.json: his PY-12 Mid-Term per-question answers and total, and no viva
 // verification stamps. Run between rehearsals, and once before going on stage:
 //   npx tsx scripts/demo-reset.ts --confirm
-// Touches ONLY stu_000's PY-12 Mid-Term rows and stu_000's StudentSkill verification columns.
+// Touches ONLY stu_000's PY-12 Mid-Term rows, stu_000's StudentSkill verification columns, and
+// archives stu_000's viva sessions (status "archived": hidden, not deleted).
 // Uses the project's DATABASE_URL (production). Deletes nothing.
 import { readFileSync } from "node:fs";
 import { db } from "../lib/db";
@@ -38,6 +39,8 @@ async function main() {
     ),
     db.assessmentResult.update({ where: { id: base.result.id }, data: { score: base.result.score } }),
     db.studentSkill.updateMany({ where: { studentId: STUDENT }, data: { verifiedAt: null, verifiedBy: null } }),
+    // Rehearsal vivas are archived (hidden from the student's list), never deleted.
+    db.vivaSession.updateMany({ where: { studentId: STUDENT, status: { not: "archived" } }, data: { status: "archived" } }),
   ]);
   await recomputeStudentSkills(STUDENT);
 

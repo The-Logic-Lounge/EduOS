@@ -23,6 +23,8 @@ model Organization {
   slug      String?  @unique
   createdAt DateTime @default(now())
 
+  entryTests EntryTest[]
+
   users       User[]
   courses     Course[]
   batches     Batch[]
@@ -589,4 +591,45 @@ model VivaSession {
 
   @@index([studentId])
   @@index([skillId])
+}
+
+/// An admissions entry test (aptitude screening). Multiple-choice answers are scored by rule
+/// against `questions` (the key); the AI only reads handwriting and marks short answers.
+model EntryTest {
+  id             String           @id @default(cuid())
+  organizationId String?
+  organization   Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  title          String
+  /// [{ id, kind: "mcq" | "short", q, options?, answer, marks, rubric? }]
+  questions      Json
+  maxScore       Int
+  cutoff         Int
+  createdAt      DateTime         @default(now())
+  sheets         EntryTestSheet[]
+
+  @@index([organizationId])
+}
+
+/// One candidate's answer sheet for an entry test.
+model EntryTestSheet {
+  id            String    @id @default(cuid())
+  testId        String
+  test          EntryTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+  candidateName String
+  /// [{ questionId, answer, marks, max, feedback? }]
+  answers       Json
+  score         Int
+  maxScore      Int
+  /// shortlisted | waitlist | review
+  status        String
+  confidence    Float?
+  /// scan | manual | seed
+  source        String    @default("scan")
+  model         String?
+  tokens        Int?
+  ms            Int?
+  createdAt     DateTime  @default(now())
+
+  @@index([testId])
+  @@index([testId, score])
 }

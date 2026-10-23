@@ -27,7 +27,8 @@ export default async function VivaPage({ searchParams }: { searchParams: Promise
       select: { skillId: true, score: true, verifiedAt: true, skill: { select: { name: true, category: true } } },
     }),
     db.vivaSession.findMany({
-      where: { studentId },
+      // "archived" = cleared by scripts/demo-reset.ts between rehearsals (kept, never deleted).
+      where: { studentId, status: { not: "archived" } },
       orderBy: { createdAt: "desc" },
       take: 8,
       select: { id: true, skillId: true, status: true, score: true, verdict: true, createdAt: true },

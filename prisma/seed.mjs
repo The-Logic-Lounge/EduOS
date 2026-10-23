@@ -305,7 +305,7 @@ const ORGS = [
   { id: ORG_BQ, name: "Bano Qabil — Karachi", slug: "bano-qabil" },
   { id: ORG_AKF, name: "Alkhidmat Skills Centre — Lahore", slug: "alkhidmat-lahore" },
 ];
-const ROOT_MODELS = new Set(["user", "student", "instructor", "course", "batch", "classroom"]);
+const ROOT_MODELS = new Set(["user", "student", "instructor", "course", "batch", "classroom", "entryTest"]);
 
 async function insert(model, rows, label) {
   // Root rows default to Bano Qabil; the second institute passes its org explicitly.
@@ -696,6 +696,7 @@ async function main() {
 
   await seedSecondInstitute(hash);
   await seedGapEvidence();
+  await seedAdmissions();
 
   // Databases seeded before tenancy have null-org root rows: they are all Bano Qabil's.
   for (const m of ROOT_MODELS) {
@@ -910,4 +911,49 @@ async function seedGapEvidence() {
     }
   }
   await insert("assessmentResponse", responseRows, `per-question responses (${questionsWritten} question sets written)`);
+}
+
+// ================================================================== admissions
+// One real aptitude entry test (MCQs scored by rule, short answers marked by the reader) and 40
+// synthetic screened candidates, so the admissions view is not empty before the live scan.
+const ENTRY_TEST_QUESTIONS = [
+  { id: "q1", kind: "mcq", q: "A pen costs Rs 40 and a notebook Rs 60. What do 3 pens and 2 notebooks cost?", options: ["Rs 200", "Rs 240", "Rs 260", "Rs 300"], answer: "B", marks: 2 },
+  { id: "q2", kind: "mcq", q: "Which number comes next: 3, 6, 12, 24, ?", options: ["30", "36", "48", "42"], answer: "C", marks: 2 },
+  { id: "q3", kind: "mcq", q: "Which of these is an input device?", options: ["Monitor", "Printer", "Keyboard", "Speaker"], answer: "C", marks: 2 },
+  { id: "q4", kind: "mcq", q: "All coders are learners. Ayesha is a coder. So:", options: ["Ayesha is a learner", "Ayesha is not a learner", "All learners are coders", "Cannot tell"], answer: "A", marks: 2 },
+  { id: "q5", kind: "mcq", q: "Choose the correctly spelled word:", options: ["Recieve", "Receive", "Receeve", "Reiceve"], answer: "B", marks: 2 },
+  { id: "q6", kind: "mcq", q: "1 GB is closest to:", options: ["1,000 KB", "1,000 MB", "100 MB", "1,000 GB"], answer: "B", marks: 2 },
+  { id: "q7", kind: "mcq", q: "What does 'www' stand for?", options: ["World Wide Web", "Wide World Web", "Web World Wide", "World Web Wide"], answer: "A", marks: 2 },
+  { id: "q8", kind: "mcq", q: "A file named report.pdf is most likely a:", options: ["Spreadsheet", "Document", "Video", "Program"], answer: "B", marks: 2 },
+  { id: "q9", kind: "short", q: "In 2–3 sentences, why do you want to learn IT skills?", answer: "A clear personal goal (job, freelancing, business, family support) explained coherently in English or Urdu.", rubric: "2 marks for a clear goal, 2 for a realistic plan, 2 for clear expression.", marks: 6 },
+  { id: "q10", kind: "short", q: "Write the steps to send an email with a file attached.", answer: "Open email, compose/new, add recipient, write subject/message, attach the file, send.", rubric: "1 mark per correct step, up to 6.", marks: 6 },
+];
+const ENTRY_TEST_ID = "ent_bq_spring27";
+
+async function seedAdmissions() {
+  await insert("entryTest", [{
+    id: ENTRY_TEST_ID, title: "Bano Qabil Spring 2027 — IT Aptitude Entry Test",
+    questions: ENTRY_TEST_QUESTIONS, maxScore: 28, cutoff: 18,
+  }], "entry tests");
+  const r3 = mulberry32(20261024);
+  const sheets = Array.from({ length: 40 }, (_, i) => {
+    const ability = 0.35 + r3() * 0.6;
+    const unsure = i % 13 === 7; // a few blurred reads -> human review
+    const answers = ENTRY_TEST_QUESTIONS.map((q) => {
+      if (q.kind === "mcq") {
+        const right = r3() < ability;
+        const letter = right ? q.answer : ["A", "B", "C", "D"].filter((l) => l !== q.answer)[Math.floor(r3() * 3)];
+        return { questionId: q.id, answer: letter, marks: right ? q.marks : 0, max: q.marks, confidence: unsure && q.id === "q4" ? 0.45 : 0.93 };
+      }
+      const marks = Math.min(q.marks, Math.max(0, Math.round(ability * q.marks + (r3() - 0.5) * 2)));
+      return { questionId: q.id, answer: "(seeded answer)", marks, max: q.marks, feedback: null, confidence: 0.9 };
+    });
+    const score = answers.reduce((s, a) => s + a.marks, 0);
+    const confidence = Math.min(...answers.map((a) => a.confidence));
+    return {
+      id: `ets_${pad(i, 3)}`, testId: ENTRY_TEST_ID, candidateName: nameFor(700 + i * 3), answers, score, maxScore: 28,
+      status: confidence < 0.6 ? "review" : score >= 18 ? "shortlisted" : "waitlist", confidence, source: "seed",
+    };
+  });
+  await insert("entryTestSheet", sheets, "entry-test sheets (synthetic candidates)");
 }
