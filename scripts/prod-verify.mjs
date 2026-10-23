@@ -32,7 +32,8 @@ expect("session cookie Secure + HttpOnly", /Secure/i.test(bq.raw) && /HttpOnly/i
 const switched = await fetch(`${BASE}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json", cookie: akf.cookie }, body: JSON.stringify({ email: "admin@eduos.pk", password: "password" }) });
 expect("switching accounts across institutes works (login with the other org's cookie)", switched.status === 200, switched.status);
 const home = await get(akf.cookie, "/");
-expect("homepage renders while signed in", home.status === 200 && !home.text.includes("Application error"), home.status);
+// The homepage sends signed-in users to their dashboard (app/page.tsx), so expect that redirect.
+expect("homepage redirects a signed-in admin to /management", home.status === 307 && (home.headers.get("location") ?? "").endsWith("/management"), `${home.status} ${home.headers.get("location")}`);
 
 console.log("\n── tenancy (read-only) ──");
 const akfStudents = list(await get(akf.cookie, "/api/students"));
