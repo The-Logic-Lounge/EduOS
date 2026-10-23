@@ -13,6 +13,17 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
+// Safety: Prisma falls back to the project's env file, which points at PRODUCTION. Running the
+// seed by accident (e.g. importing this file) must never write there. Remote targets require
+// an explicit SEED_TARGET=production-approved, set only by the approved rollout script.
+{
+  const url = process.env.DATABASE_URL ?? "";
+  const local = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
+  if (!local && process.env.SEED_TARGET !== "production-approved") {
+    console.error("refusing to seed a non-local database without SEED_TARGET=production-approved");
+    process.exit(1);
+  }
+}
 const db = new PrismaClient();
 
 // ---------------------------------------------------------------- prng
@@ -786,6 +797,33 @@ function hashStr(s) {
   return h >>> 0;
 }
 
+// Real questions and answer keys for the assessments the finale demo scans live. Concept strings
+// must match the module objectives so the seeded per-question evidence lines up.
+const DEMO_QUESTIONS = {
+  "ass_PY-12_QUIZ": [
+    { id: "q1", concept: "Install Python and VS Code", marks: 9,
+      q: "How do you check, from the terminal, which Python version is installed? Write the command.",
+      a: "python --version (or python3 --version / py --version on Windows) prints the installed version, e.g. Python 3.12.1." },
+    { id: "q2", concept: "Write and run a first script", marks: 8,
+      q: "Write a script hello.py that asks for the user's name and greets them, and the command to run it.",
+      a: "name = input(\"Your name: \"); print(\"Hello, \" + name) — run with: python hello.py" },
+    { id: "q3", concept: "Use variables and basic types", marks: 8,
+      q: "What is the type of each value: 42, 3.5, \"42\", True? What does int(\"42\") + 1 give?",
+      a: "int, float, str, bool. int(\"42\") + 1 gives 43 (an int)." },
+  ],
+  "ass_PY-12_MIDTERM": [
+    { id: "q1", concept: "Work with lists, dicts, sets and tuples", marks: 17,
+      q: "What is the difference between a list and a tuple? Give one example of each and one situation where you would use a tuple.",
+      a: "Lists are mutable, tuples are immutable. e.g. marks = [70, 85]; point = (3, 4). Use a tuple for fixed data such as coordinates or a dictionary key." },
+    { id: "q2", concept: "Choose the right structure for a task", marks: 17,
+      q: "During attendance you must check quickly whether a roll number was already marked present. Which data structure would you use, and why?",
+      a: "A set: membership checks (roll in present) are O(1) on average and duplicates are ignored automatically." },
+    { id: "q3", concept: "Reason about time cost", marks: 16,
+      q: "What is the time cost of `x in my_list` versus `x in my_set` for 100,000 items? Explain why.",
+      a: "List: O(n), it scans item by item. Set: O(1) average, it hashes x and jumps to the bucket." },
+  ],
+};
+
 async function seedGapEvidence() {
   const assessments = await db.assessment.findMany({
     select: {
@@ -803,7 +841,8 @@ async function seedGapEvidence() {
     const n = concepts.length;
     const base = Math.floor(a.maxScore / n);
     const marks = concepts.map((_, i) => base + (i < a.maxScore - base * n ? 1 : 0));
-    const questions = concepts.map((concept, i) => ({
+    const demo = DEMO_QUESTIONS[a.id];
+    const questions = demo ? demo.map((d) => ({ ...d, module: a.module?.title ?? "", skillId: skills.length ? skills[demo.indexOf(d) % skills.length].skillId : null })) : concepts.map((concept, i) => ({
       id: `q${i + 1}`,
       q: `Explain or demonstrate: ${concept}.`,
       a: `A correct answer shows the student can ${concept.charAt(0).toLowerCase()}${concept.slice(1)}, with a working example.`,

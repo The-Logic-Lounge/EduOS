@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 const CAPABILITIES = [
   ["01", "Attendance, assessments and assignments in one ledger"],
   ["02", "A skill passport that compounds across every batch"],
-  ["03", "AI copilot for instructors — plans, feedback, risk flags"],
+  ["03", "AI copilot for instructors — plans, feedback, re-teach groups"],
   ["04", "Ask the institute anything, in plain language"],
 ];
 

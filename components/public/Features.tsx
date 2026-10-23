@@ -5,7 +5,7 @@ import { useInView } from "./useInView";
 const FEATURES = [
   {
     title: "Smart Attendance",
-    description: "Mark sessions, track absences, and surface at-risk students before they fall behind.",
+    description: "Mark sessions and track absences, so every percentage on every dashboard comes from real records.",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square">
         <path d="M9 11l3 3L22 4" />
@@ -25,7 +25,7 @@ const FEATURES = [
   },
   {
     title: "AI Copilot",
-    description: "Instructors get lesson plans, risk flags, and instant answers from institute data.",
+    description: "Instructors get lesson plans, re-teach groups and answers grounded in their own batch data.",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square">
         <path d="M12 2a4 4 0 014 4c0 2-2 3-2 5.5" />

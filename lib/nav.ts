@@ -11,6 +11,9 @@ export const STUDENT_NAV: NavItem[] = [
   { href: "/student/assignments", label: "Assignments" },
   { href: "/student/timetable", label: "Timetable" },
   { href: "/student/passport", label: "Skill Passport" },
+  { href: "/student/gaps", label: "My Gaps" },
+  { href: "/student/viva", label: "Skill Viva" },
+  { href: "/student/earn", label: "First Earning" },
   { href: "/student/career", label: "Career Path" },
   { href: "/student/chat", label: "Ask Edu OS" },
 ];
@@ -18,6 +21,7 @@ export const STUDENT_NAV: NavItem[] = [
 export const INSTRUCTOR_NAV: NavItem[] = [
   { href: "/instructor", label: "Dashboard" },
   { href: "/instructor/batches", label: "My Batches" },
+  { href: "/instructor/gaps", label: "Gap Finder" },
   { href: "/instructor/timetable", label: "Timetable" },
   { href: "/instructor/copilot", label: "AI Copilot" },
   { href: "/courses", label: "Courses" },
@@ -29,6 +33,7 @@ export const MANAGEMENT_NAV: NavItem[] = [
   { href: "/management/instructors", label: "Instructors" },
   { href: "/management/batches", label: "Batches" },
   { href: "/management/courses", label: "Courses" },
+  { href: "/management/gaps", label: "Gap Map" },
   { href: "/management/ask", label: "Ask Edu OS" },
   { href: "/management/timetable", label: "Timetable" },
 ];

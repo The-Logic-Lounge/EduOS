@@ -2,23 +2,27 @@
 
 import { useInView } from "./useInView";
 
-const QUOTES = [
+// Personas, not testimonials: EDUOS runs on synthetic data and has no real users to quote yet,
+// so each card states the real problem a role faces (sources in docs/audits) instead of a
+// made-up endorsement.
+const PERSONAS = [
   {
-    quote:
-      "Edu OS turned our spreadsheets into a real operating system. We now know which students need help before they ask.",
-    name: "Ayesha Khan",
-    role: "Program Director",
+    role: "The trainer",
+    problem:
+      "One trainer, a batch of 100, answer sheets on paper. Marking takes days, and a total score never says which concept each student is missing.",
+    answer: "Gap Finder reads the sheets and groups students by the concept to re-teach.",
   },
   {
-    quote:
-      "The skill passport gave my students something concrete to show employers. Hiring partners actually read it.",
-    name: "Kamran Ali",
-    role: "Lead Instructor",
+    role: "The student",
+    problem:
+      "A free certificate that employers don't trust, in a market where only 10–12% of IT graduates are job-ready on day one.",
+    answer: "A Skill Passport verified by viva, and a plan to a first paid freelance order.",
   },
   {
-    quote: "I can ask about my attendance, upcoming assessments, and career path in plain Urdu. It just works.",
-    name: "Fatima Noor",
-    role: "Graduate",
+    role: "The programme director",
+    problem:
+      "Thousands of learners across centres, and no view of which concepts fail across batches until results are already in.",
+    answer: "An institute-wide gap map, isolated per institute, with live cost per learner.",
   },
 ];
 
@@ -26,11 +30,14 @@ export function Testimonials() {
   return (
     <section className="px-4 py-24 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
-        <span className="stat text-signal">Voices</span>
-        <h2 className="mt-4 font-display text-title text-ink">Built with institutes, for students.</h2>
+        <span className="stat text-signal">Who it is for</span>
+        <h2 className="mt-4 font-display text-title text-ink">Three people, one institute.</h2>
+        <p className="mt-3 max-w-prose text-[0.9375rem] text-ink-3">
+          Personas built from published data on free IT training in Pakistan, not customer quotes.
+        </p>
         <div className="mt-12 grid gap-6 md:grid-cols-3">
-          {QUOTES.map((q, index) => (
-            <QuoteCard key={q.name} quote={q} index={index} />
+          {PERSONAS.map((p, index) => (
+            <PersonaCard key={p.role} persona={p} index={index} />
           ))}
         </div>
       </div>
@@ -38,7 +45,7 @@ export function Testimonials() {
   );
 }
 
-function QuoteCard({ quote, index }: { quote: (typeof QUOTES)[number]; index: number }) {
+function PersonaCard({ persona, index }: { persona: (typeof PERSONAS)[number]; index: number }) {
   const { ref, inView } = useInView();
   return (
     <div
@@ -46,16 +53,9 @@ function QuoteCard({ quote, index }: { quote: (typeof QUOTES)[number]; index: nu
       className={`card p-6 reveal ${inView ? "is-visible" : ""}`}
       style={{ transitionDelay: `${index * 100}ms` }}
     >
-      <p className="text-base leading-relaxed text-ink-2">&ldquo;{quote.quote}&rdquo;</p>
-      <div className="mt-6 flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-soft font-display text-sm font-bold text-accent">
-          {quote.name[0]}
-        </div>
-        <div>
-          <div className="text-sm font-medium text-ink">{quote.name}</div>
-          <div className="text-xs text-ink-3">{quote.role}</div>
-        </div>
-      </div>
+      <div className="stat text-accent">{persona.role}</div>
+      <p className="mt-4 text-base leading-relaxed text-ink-2">{persona.problem}</p>
+      <p className="mt-5 border-t border-hairline pt-4 text-sm font-medium text-ink">{persona.answer}</p>
     </div>
   );
 }
