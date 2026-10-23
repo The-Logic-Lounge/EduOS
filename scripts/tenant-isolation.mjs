@@ -58,9 +58,10 @@ for (const path of [
   expect(`GET ${path} denied`, denied(r.status), r.status);
 }
 let r = await call(akfAdmin, "GET", "/api/students");
-expect("student list holds only own institute", ids(r).length > 0 && ids(r).every((id) => id.startsWith("stu_akf_")), ids(r).slice(0, 3).join(","));
+// Leak test, not a prefix test: earlier runs add generated-id rows to Alkhidmat.
+expect("student list holds only own institute", ids(r).includes("stu_akf_0") && !ids(r).some((id) => /^stu_\d{3}$/.test(id)), ids(r).slice(0, 3).join(","));
 r = await call(akfAdmin, "GET", "/api/batches");
-expect("batch list holds only own institute", ids(r).length > 0 && ids(r).every((id) => id === "bat_AKF-01"), ids(r).join(","));
+expect("batch list holds only own institute", ids(r).includes("bat_AKF-01") && !ids(r).some((id) => /^bat_(?!AKF)/.test(id)), ids(r).join(","));
 r = await call(akfAdmin, "PATCH", "/api/students/stu_000", { city: "Hijacked" });
 expect("PATCH other institute's student denied", denied(r.status), r.status);
 r = await call(akfAdmin, "DELETE", "/api/batches/bat_PY-12");

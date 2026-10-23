@@ -29,6 +29,10 @@ const ins = await login("instructor@eduos.pk");
 const stu = await login("student@eduos.pk");
 expect("all four demo logins succeed", [bq, akf, ins, stu].every((l) => l.status === 200), [bq, akf, ins, stu].map((l) => l.status).join(","));
 expect("session cookie Secure + HttpOnly", /Secure/i.test(bq.raw) && /HttpOnly/i.test(bq.raw), bq.raw);
+const switched = await fetch(`${BASE}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json", cookie: akf.cookie }, body: JSON.stringify({ email: "admin@eduos.pk", password: "password" }) });
+expect("switching accounts across institutes works (login with the other org's cookie)", switched.status === 200, switched.status);
+const home = await get(akf.cookie, "/");
+expect("homepage renders while signed in", home.status === 200 && !home.text.includes("Application error"), home.status);
 
 console.log("\n── tenancy (read-only) ──");
 const akfStudents = list(await get(akf.cookie, "/api/students"));

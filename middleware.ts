@@ -31,6 +31,8 @@ export async function middleware(req: NextRequest) {
   try {
     const { payload } = await jwtVerify(token, authSecret());
     role = payload.role as Role;
+    // Pre-tenancy session (no org claim): treated as signed out by the app, so clear it here.
+    if (!payload.organizationId) throw new Error("legacy session");
   } catch {
     // Expired or tampered token — clear cookie and redirect to login
     const res = NextResponse.redirect(new URL("/login", req.url));

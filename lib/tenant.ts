@@ -14,7 +14,8 @@ import { authSecret, SESSION_COOKIE } from "./session-secret";
  *   - anon:   no / invalid session (login, public)  -> unscoped; every protected route
  *             already calls requireUser() before touching data
  *   - org:    signed-in user                        -> every query filtered to their org
- * A signed-in session without an organization fails closed.
+ * A pre-tenancy session (no org claim) counts as anon: getSessionUser() returns null for it,
+ * so requireUser() refuses it on every protected route.
  */
 
 export type TenantCtx = { kind: "system" } | { kind: "anon" } | { kind: "org"; orgId: string };
@@ -35,7 +36,10 @@ export async function tenantContext(): Promise<TenantCtx> {
     return { kind: "anon" };
   }
   const orgId = payload.organizationId;
-  if (typeof orgId !== "string" || !orgId) throw new AuthError("Session has no organization", 401);
+  // A session minted before tenancy carries no org. getSessionUser() already treats it as
+  // signed out, so do the same here: throwing turned every DB read on a public page (the
+  // homepage's course list) into a 500 for anyone still holding an old cookie.
+  if (typeof orgId !== "string" || !orgId) return { kind: "anon" };
   return { kind: "org", orgId };
 }
 

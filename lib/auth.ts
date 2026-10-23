@@ -83,7 +83,9 @@ export async function verifyLogin(email: string, password: string, ip = "unknown
     throw new AuthError("Too many attempts. Try again in 15 minutes.", 429);
   }
 
-  const user = await db.user.findUnique({
+  // Unscoped on purpose: login runs BEFORE there is a trusted tenant, and the browser may
+  // still hold another institute's (or a pre-tenancy) cookie, which must not hide the account.
+  const user = await rawDb.user.findUnique({
     where: { email: email.toLowerCase().trim() },
     include: { student: true, instructor: true },
   });
