@@ -30,13 +30,15 @@ export type Turn = {
   gradedBy?: "ai" | "fallback";
   model?: string;        // model that graded the answer, or "fallback"
   followUp?: "probe" | "next";
+  flagged?: string;      // why this AI grade cannot be trusted (suspiciousAnswer) -> viva is provisional
 };
 
 export const answered = (t: Turn[]) => t.filter((x) => typeof x.score === "number");
 
 export type Verdict = {
   pass: boolean;
-  provisional: boolean; // any answer graded without AI -> a trainer must review, nothing is stamped
+  provisional: boolean; // any answer graded without AI, or flagged -> a trainer must review, nothing is stamped
+  flagged: string[];    // turn-level suspiciousAnswer reasons
   mean: number;         // 0-10, one decimal
   score: number;        // 0-100
   pastedCount: number;
@@ -55,9 +57,11 @@ export function verdictFor(turns: Turn[]): Verdict {
   const low = done.filter((t) => t.score! < MIN_ANSWER_SCORE);
   if (low.length) reasons.push(`${low.length} answer${low.length > 1 ? "s" : ""} scored below ${MIN_ANSWER_SCORE}`);
   if (pastedCount > MAX_PASTED) reasons.push(`${pastedCount} answers were pasted (at most ${MAX_PASTED} allowed)`);
+  const flagged = done.flatMap((t) => (t.flagged ? [`Q${t.n}: ${t.flagged}`] : []));
   return {
     pass: reasons.length === 0,
-    provisional: done.some((t) => t.gradedBy !== "ai"),
+    provisional: flagged.length > 0 || done.some((t) => t.gradedBy !== "ai"),
+    flagged,
     mean: Math.round(mean * 10) / 10,
     score: Math.round(mean * 10),
     pastedCount,
@@ -68,7 +72,10 @@ export function verdictFor(turns: Turn[]): Verdict {
 
 export function verdictText(v: Verdict): string {
   if (v.provisional) {
-    return `Provisional ${v.pass ? "pass" : "result"} — needs trainer review. AI unavailable, answers keyword-matched against the answer key; not stamped on the passport.`;
+    const why = v.flagged.length
+      ? "An answer was flagged as a possible attempt to instruct the grader"
+      : "AI unavailable, answers keyword-matched against the answer key";
+    return `Provisional ${v.pass ? "pass" : "result"} — needs trainer review. ${why}; not stamped on the passport.`;
   }
   if (v.pass) return `Verified — average ${v.mean}/10 across ${MAX_QUESTIONS} questions.`;
   return `Not yet verified — ${v.reasons.join("; ")}.`;
@@ -108,6 +115,40 @@ export function keywordScore(answer: string, reference: string): number {
   const need = Math.max(1, Math.ceil(keys.size * 0.6));
   const raw = Math.round(10 * Math.min(1, hits / need));
   return answer.trim().split(/\s+/).length < 5 ? Math.min(raw, 4) : raw;
+}
+
+// ------------------------------------------------------------ prompt-injection guards
+
+const INJECTION_MARKERS = ["ignore previous", "ignore all", "grader", "score 10", "system prompt", "</answer>", "you are now"]; // narrower than "you are", which honest answers use ("if you are looping…")
+
+/**
+ * Why an AI grade on this answer must not stamp the passport, or null. A near-perfect score on
+ * a very short answer, or grader-directed phrasing, is what a forged grade looks like.
+ * ponytail: phrase blocklist — paraphrase gets past it; the real defence is that the answer
+ * reaches the model only as JSON data. This just routes the obvious attempts to a trainer.
+ */
+export function suspiciousAnswer(answer: string, score: number): string | null {
+  const text = answer.normalize("NFKC").replace(/\p{Cf}/gu, "").toLowerCase().replace(/\s+/g, " ");
+  const hit = INJECTION_MARKERS.find((m) => text.includes(m));
+  if (hit) return `answer contains an instruction-like phrase ("${hit}")`;
+  const len = answer.trim().length;
+  if (score >= 9 && len < 40) return `scored ${score}/10 on a ${len}-character answer`;
+  return null;
+}
+
+export const MAX_CONCEPT = 120;
+
+/** A concept string made safe to carry: trimmed, no angle brackets or newlines, <= 120 chars. */
+export function cleanConcept(raw: string | null | undefined): string | null {
+  const s = (raw ?? "").replace(/[<>\r\n]/g, " ").replace(/\s+/g, " ").trim().slice(0, MAX_CONCEPT).trim();
+  return s || null;
+}
+
+/** The student's concept hint (a URL param) is accepted only when it names a concept the server
+ *  already holds for this skill — and then the SERVER's string is used, never the student's. */
+export function pickConcept(raw: string | null | undefined, known: string[]): string | null {
+  const c = cleanConcept(raw)?.toLowerCase();
+  return c ? known.find((k) => cleanConcept(k)?.toLowerCase() === c) ?? null : null;
 }
 
 // ------------------------------------------------------------ input validation
