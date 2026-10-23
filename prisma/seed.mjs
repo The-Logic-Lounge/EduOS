@@ -827,13 +827,19 @@ const DEMO_QUESTIONS = {
 async function seedGapEvidence() {
   const assessments = await db.assessment.findMany({
     select: {
-      id: true, maxScore: true, questions: true, moduleId: true,
+      id: true, maxScore: true, questions: true, moduleId: true, scheduledAt: true, batchId: true,
       module: { select: { id: true, title: true, objectives: true, skills: { select: { skillId: true, weight: true } } } },
       results: { select: { studentId: true, score: true } },
     },
   });
   const responseRows = [];
   let questionsWritten = 0;
+  // A student who enrolled after a test was given a placeholder 0 for it (backfillEnrollment).
+  // That is missing evidence, not a learning gap: never invent per-question answers for it.
+  const enrolledAt = new Map(
+    (await db.enrollment.findMany({ select: { studentId: true, batchId: true, enrolledAt: true } }))
+      .map((e) => [`${e.studentId}|${e.batchId}`, e.enrolledAt.getTime()]),
+  );
 
   for (const a of assessments) {
     const concepts = (a.module?.objectives?.length ? a.module.objectives : [a.module?.title ?? "Core concepts"]).slice(0, 4);
@@ -860,6 +866,8 @@ async function seedGapEvidence() {
     const difficulty = qs.map((q) => ((hashStr(String(q.concept ?? q.q)) % 1000) / 1000) * 0.35 - 0.2);
 
     for (const r of a.results) {
+      const joined = enrolledAt.get(`${r.studentId}|${a.batchId}`);
+      if (joined !== undefined && joined > a.scheduledAt.getTime()) continue;
       const rnd2 = mulberry32(hashStr(`${a.id}|${r.studentId}`));
       const frac = a.maxScore ? r.score / a.maxScore : 0;
       const weak = hashStr(`${r.studentId}|${a.moduleId}`) % qs.length; // one personal weak concept

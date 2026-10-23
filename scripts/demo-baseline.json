@@ -1,0 +1,46 @@
+{
+    "result": {
+        "id": "res_PY-12_MIDTERM_000",
+        "score": 47
+    },
+    "responses": [
+        {
+            "questionId": "q1",
+            "answer": "Correct approach to \"Work with lists, dicts, sets and tuples\", with a working example.",
+            "marks": 17,
+            "maxMarks": 17,
+            "concept": "Work with lists, dicts, sets and tuples",
+            "skillId": "skl_python_basics",
+            "feedback": null,
+            "source": "seed",
+            "gradedBy": "seed",
+            "confidence": null
+        },
+        {
+            "questionId": "q2",
+            "answer": "Correct approach to \"Choose the right structure for a task\", with a working example.",
+            "marks": 17,
+            "maxMarks": 17,
+            "concept": "Choose the right structure for a task",
+            "skillId": "skl_algorithms",
+            "feedback": null,
+            "source": "seed",
+            "gradedBy": "seed",
+            "confidence": null
+        },
+        {
+            "questionId": "q3",
+            "answer": "Correct approach to \"Reason about time cost\", with a working example.",
+            "marks": 13,
+            "maxMarks": 16,
+            "concept": "Reason about time cost",
+            "skillId": "skl_python_basics",
+            "feedback": null,
+            "source": "seed",
+            "gradedBy": "seed",
+            "confidence": null
+        }
+    ],
+    "verified": 0,
+    "vivas": 0
+}

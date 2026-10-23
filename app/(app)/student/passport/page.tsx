@@ -1,4 +1,6 @@
+import Link from "next/link";
 import EmptyState from "@/components/ui/EmptyState";
+import Badge from "@/components/ui/Badge";
 import { requirePageRole } from "@/lib/page-auth";
 import { db } from "@/lib/db";
 import { skillGaps, skillProgression, studentOverallPerformance, type SkillProgression } from "@/lib/analytics";
@@ -81,10 +83,13 @@ export default async function SkillPassportPage() {
       orderBy: [{ score: "desc" }],
       select: {
         id: true,
+        skillId: true,
         score: true,
         level: true,
         evidenceCount: true,
         updatedAt: true,
+        verifiedAt: true,
+        verifiedBy: true,
         skill: { select: { name: true, category: true } },
       },
     }),
@@ -233,6 +238,28 @@ export default async function SkillPassportPage() {
                     {s.evidenceCount} assessment{s.evidenceCount === 1 ? "" : "s"} of evidence &middot;{" "}
                     {fmtDate(s.updatedAt)}
                   </p>
+
+                  {/* Proof-of-Skill: a passed AI viva stamps the skill; otherwise offer one. */}
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-dashed border-hairline pt-3 text-[0.8125rem]">
+                    {s.verifiedAt && s.verifiedBy ? (
+                      <>
+                        <Badge variant="success">Verified ✓ viva · {fmtDate(s.verifiedAt)}</Badge>
+                        <Link href={`/student/viva/${s.verifiedBy}`} className="text-accent hover:underline">
+                          Read the viva transcript
+                        </Link>
+                        <Link href={`/verify/${s.verifiedBy}`} className="text-ink-2 hover:text-accent">
+                          Employer link ↗
+                        </Link>
+                      </>
+                    ) : (
+                      <Link
+                        href={`/student/viva?skillId=${encodeURIComponent(s.skillId)}`}
+                        className="inline-flex items-center gap-1.5 font-medium text-accent hover:underline"
+                      >
+                        Verify this skill &rarr;
+                      </Link>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>

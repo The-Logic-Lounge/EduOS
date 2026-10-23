@@ -23,6 +23,8 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   // Public marketing homepage must be reachable without a session.
   if (pathname === "/") return NextResponse.next();
+  // Public Proof-of-Skill record: employers open it from a passport link without an account.
+  if (pathname.startsWith("/verify/")) return NextResponse.next();
 
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   if (!token) return NextResponse.redirect(new URL("/login", req.url));

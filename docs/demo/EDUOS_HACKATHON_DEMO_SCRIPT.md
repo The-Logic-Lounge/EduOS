@@ -41,9 +41,10 @@ should click through each one in the last 5 minutes so nothing is cold:
 3. The review screen opens. Point at Q2's transcription: *"I will use a list and loop over it."*
    > "It gave zero, and look at the reason: a set gives instant lookup, a list doesn't.
    > I'm the trainer, so I confirm or change any mark. **The AI never grades alone.**"
-4. **Confirm**, then point at the re-teach groups:
-   > "Now I don't see 31 out of 50. I see the **N students** who share the gap 'Choose the right
-   > structure for a task'. That's my re-teach group for Monday."
+4. **Confirm**. Ali's Mid-Term goes from **47/50 to 15/50**, live, and he joins the re-teach
+   groups for *"Choose the right structure"* and *"Reason about time cost"*.
+   > "His total used to say 47 out of 50, top of the class. His paper says he can't choose a
+   > data structure or reason about its cost. A total hides that. A concept view doesn't."
 
 *(Q5 line, if asked: "Reading handwriting and judging a free-text answer can't be done with rules. That's
 why we use a vision model.")*
@@ -70,8 +71,11 @@ a Fiverr gig description written **only from the student's real evidence**, with
 
 ## 4:30 — Management: the institute view (Q7, Q8, Q9) · tabs 3 + 4 · 60 s
 
-1. **Gap Map**: courses × concepts across every batch.
-   > "The director sees the same gap institute-wide, and which course needs a better module."
+1. **Gap Map**: courses × concepts across every batch. Point at the Python row:
+   > "'Reason about time cost' isn't just Ali. It's a gap for **9 Python students across two
+   > batches**. That tells the director to fix the *module*, not just re-teach one student."
+   Then point at the top of the list:
+   > "Institute-wide, the biggest gap is *async/await* in Web Development: **39 students**."
 2. **System Health** (window 1h):
    > "Every AI call you just saw is here, with its latency and tokens. Marking one answer sheet costs about
    > **Rs 0.23**; a student chat about **Rs 0.5**. That's not a guess, it's measured."
@@ -103,4 +107,5 @@ a Fiverr gig description written **only from the student's real evidence**, with
 - [ ] System Health: AI provider **Healthy**, telemetry recent
 - [ ] Do one scan with the spare sheet. It also warms the vision model.
 - [ ] Two handwritten sheets: Q1 right; Q2 "use a list"; Q3 "same speed".
+- [ ] **Reset Ali after every rehearsal:** `npx tsx scripts/demo-reset.ts --confirm` → "Mid-Term 47/50 … OK"
 - [ ] Phone charged, camera permission granted for the site

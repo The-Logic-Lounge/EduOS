@@ -588,6 +588,10 @@ export async function skillProgression(studentId: string): Promise<SkillProgress
 
 export const GAP_THRESHOLD = 60;
 
+/** Per-question rows relabelled "backfill" came from a late enrollee's placeholder 0 — missing
+ *  evidence, not a gap — so no gap number may count them. */
+const EVIDENCE = { source: { not: "backfill" } } as const;
+
 export type ConceptMastery = {
   concept: string;
   skillId: string | null;
@@ -611,7 +615,7 @@ function toMastery(r: MasteryRow): ConceptMastery {
 export async function studentGaps(studentId: string) {
   const rows = (await db.assessmentResponse.groupBy({
     by: ["concept", "skillId"],
-    where: { studentId },
+    where: { studentId, ...EVIDENCE },
     _sum: { marks: true, maxMarks: true },
     _count: { _all: true },
   })) as MasteryRow[];
@@ -619,7 +623,7 @@ export async function studentGaps(studentId: string) {
   const gapConcepts = concepts.filter((c) => c.isGap).map((c) => c.concept);
   const evidence = gapConcepts.length
     ? await db.assessmentResponse.findMany({
-        where: { studentId, concept: { in: gapConcepts } },
+        where: { studentId, concept: { in: gapConcepts }, ...EVIDENCE },
         orderBy: { createdAt: "desc" },
         select: {
           concept: true, questionId: true, answer: true, marks: true, maxMarks: true, feedback: true, gradedBy: true, source: true,
@@ -633,7 +637,7 @@ export async function studentGaps(studentId: string) {
 /** A batch's mastery per concept, and for each gap concept the students who share it —
  *  the trainer's re-teach groups. */
 export async function batchGaps(batchId: string) {
-  const where = { assessment: { batchId } };
+  const where = { assessment: { batchId }, ...EVIDENCE };
   const [byConcept, byStudent, roster] = await Promise.all([
     db.assessmentResponse.groupBy({ by: ["concept", "skillId"], where, _sum: { marks: true, maxMarks: true }, _count: { _all: true } }) as Promise<MasteryRow[]>,
     db.assessmentResponse.groupBy({ by: ["studentId", "concept"], where, _sum: { marks: true, maxMarks: true } }),
@@ -662,8 +666,8 @@ export async function batchGaps(batchId: string) {
  *  below the line. Tenant-scoped like every other query. */
 export async function instituteGapMap() {
   const [rows, perStudent, assessments] = await Promise.all([
-    db.assessmentResponse.groupBy({ by: ["assessmentId", "concept"], _sum: { marks: true, maxMarks: true }, _count: { _all: true } }),
-    db.assessmentResponse.groupBy({ by: ["assessmentId", "studentId", "concept"], _sum: { marks: true, maxMarks: true } }),
+    db.assessmentResponse.groupBy({ by: ["assessmentId", "concept"], where: EVIDENCE, _sum: { marks: true, maxMarks: true }, _count: { _all: true } }),
+    db.assessmentResponse.groupBy({ by: ["assessmentId", "studentId", "concept"], where: EVIDENCE, _sum: { marks: true, maxMarks: true } }),
     db.assessment.findMany({ select: { id: true, batch: { select: { id: true, code: true, course: { select: { id: true, code: true, title: true } } } } } }),
   ]);
   const courseOf = new Map(assessments.map((a) => [a.id, a.batch.course]));
@@ -690,4 +694,18 @@ export async function instituteGapMap() {
   }));
   list.sort((a, b) => b.studentsBelow - a.studentsBelow || a.mastery - b.mastery);
   return { threshold: GAP_THRESHOLD, cells: list };
+}
+
+/** The answers behind any of a student's concepts (studentGaps only returns them for gaps).
+ *  Lets a student with no gap still practise the concepts closest to the line. */
+export async function studentConceptEvidence(studentId: string, concepts: string[]) {
+  if (concepts.length === 0) return [];
+  return db.assessmentResponse.findMany({
+    where: { studentId, concept: { in: concepts } },
+    orderBy: { createdAt: "desc" },
+    select: {
+      concept: true, questionId: true, answer: true, marks: true, maxMarks: true, feedback: true, gradedBy: true, source: true,
+      assessment: { select: { id: true, title: true, questions: true } },
+    },
+  });
 }
