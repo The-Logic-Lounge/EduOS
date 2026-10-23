@@ -22,6 +22,7 @@ export const INSTRUCTOR_NAV: NavItem[] = [
   { href: "/instructor", label: "Dashboard" },
   { href: "/instructor/batches", label: "My Batches" },
   { href: "/instructor/gaps", label: "Gap Finder" },
+  { href: "/instructor/peers", label: "Peer Circles" },
   { href: "/instructor/timetable", label: "Timetable" },
   { href: "/instructor/copilot", label: "AI Copilot" },
   { href: "/courses", label: "Courses" },

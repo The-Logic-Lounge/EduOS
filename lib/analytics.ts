@@ -709,3 +709,16 @@ export async function studentConceptEvidence(studentId: string, concepts: string
     },
   });
 }
+
+/** Every student's mastery on every concept in one batch (Peer Circles needs the strong side
+ *  too, not only the gaps). Same evidence and definition as batchGaps(). */
+export async function batchConceptMastery(batchId: string) {
+  const rows = await db.assessmentResponse.groupBy({
+    by: ["studentId", "concept"],
+    where: { assessment: { batchId }, ...EVIDENCE },
+    _sum: { marks: true, maxMarks: true },
+  });
+  return rows
+    .filter((r) => (r._sum.maxMarks ?? 0) > 0)
+    .map((r) => ({ studentId: r.studentId, concept: r.concept, mastery: pct(r._sum.marks ?? 0, r._sum.maxMarks ?? 0) }));
+}
