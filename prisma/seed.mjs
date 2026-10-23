@@ -684,6 +684,7 @@ async function main() {
   await insert("studentSkill", studentSkillRows, "student skills (derived from assessment evidence)");
 
   await seedSecondInstitute(hash);
+  await seedGapEvidence();
 
   // Databases seeded before tenancy have null-org root rows: they are all Bano Qabil's.
   for (const m of ROOT_MODELS) {
@@ -772,3 +773,94 @@ main()
     process.exit(1);
   })
   .finally(() => db.$disconnect());
+
+// ================================================================== gap evidence
+// Per-question answers for Gap Finder. Runs AFTER everything else and reads the totals that
+// are actually stored (here or in production), then splits each one across the assessment's
+// questions with its own PRNG — so sum(question marks) === AssessmentResult.score, always,
+// and the main generator's sequence (and therefore every existing row) is untouched.
+// Idempotent: questions are only written where null; responses use createMany skipDuplicates.
+function hashStr(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+async function seedGapEvidence() {
+  const assessments = await db.assessment.findMany({
+    select: {
+      id: true, maxScore: true, questions: true, moduleId: true,
+      module: { select: { id: true, title: true, objectives: true, skills: { select: { skillId: true, weight: true } } } },
+      results: { select: { studentId: true, score: true } },
+    },
+  });
+  const responseRows = [];
+  let questionsWritten = 0;
+
+  for (const a of assessments) {
+    const concepts = (a.module?.objectives?.length ? a.module.objectives : [a.module?.title ?? "Core concepts"]).slice(0, 4);
+    const skills = (a.module?.skills ?? []).slice().sort((x, y) => y.weight - x.weight);
+    const n = concepts.length;
+    const base = Math.floor(a.maxScore / n);
+    const marks = concepts.map((_, i) => base + (i < a.maxScore - base * n ? 1 : 0));
+    const questions = concepts.map((concept, i) => ({
+      id: `q${i + 1}`,
+      q: `Explain or demonstrate: ${concept}.`,
+      a: `A correct answer shows the student can ${concept.charAt(0).toLowerCase()}${concept.slice(1)}, with a working example.`,
+      marks: marks[i],
+      concept,
+      skillId: skills.length ? skills[i % skills.length].skillId : null,
+      module: a.module?.title ?? "",
+    }));
+    if (a.questions == null) {
+      await db.assessment.update({ where: { id: a.id }, data: { questions } });
+      questionsWritten++;
+    }
+    const qs = Array.isArray(a.questions) && a.questions.length ? a.questions : questions;
+    // Concept difficulty is shared by everyone, so batch-level gaps exist, not just noise.
+    const difficulty = qs.map((q) => ((hashStr(String(q.concept ?? q.q)) % 1000) / 1000) * 0.35 - 0.2);
+
+    for (const r of a.results) {
+      const rnd2 = mulberry32(hashStr(`${a.id}|${r.studentId}`));
+      const frac = a.maxScore ? r.score / a.maxScore : 0;
+      const weak = hashStr(`${r.studentId}|${a.moduleId}`) % qs.length; // one personal weak concept
+      let m = qs.map((q, i) => {
+        const dip = i === weak ? 0.15 + 0.4 * (1 - frac) : 0;
+        const f = clamp(frac - difficulty[i] - dip + (rnd2() - 0.5) * 0.1, 0, 1);
+        return Math.round(f * q.marks);
+      });
+      // Repair rounding so the per-question marks sum to the stored total exactly.
+      let diff = r.score - m.reduce((s, x) => s + x, 0);
+      for (let guard = 0; diff !== 0 && guard < 1000; guard++) {
+        const i = guard % qs.length;
+        // Prefer not to add marks to the weak concept, unless nothing else has room left.
+        const j = diff > 0 && i === weak && guard < qs.length * 3 ? (i + 1) % qs.length : i;
+        if (diff > 0 && m[j] < qs[j].marks) { m[j]++; diff--; }
+        else if (diff < 0 && m[j] > 0) { m[j]--; diff++; }
+      }
+      qs.forEach((q, i) => {
+        const ratio = q.marks ? m[i] / q.marks : 0;
+        const concept = String(q.concept ?? q.module ?? "this topic");
+        responseRows.push({
+          id: `rsp_${a.id.slice(4)}_${r.studentId.slice(4)}_${q.id}`,
+          assessmentId: a.id,
+          studentId: r.studentId,
+          questionId: String(q.id),
+          answer: ratio >= 0.8
+            ? `Correct approach to "${concept}", with a working example.`
+            : ratio >= 0.4
+              ? `Partly right on "${concept}" — the idea is there but the example is incomplete.`
+              : `Confuses "${concept}" with a related idea; the example does not run.`,
+          marks: m[i],
+          maxMarks: q.marks,
+          concept,
+          skillId: q.skillId ?? null,
+          feedback: null,
+          source: "seed",
+          gradedBy: "seed",
+        });
+      });
+    }
+  }
+  await insert("assessmentResponse", responseRows, `per-question responses (${questionsWritten} question sets written)`);
+}

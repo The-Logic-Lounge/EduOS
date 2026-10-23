@@ -100,6 +100,18 @@ async function main() {
     WHERE m."courseId" <> b."courseId"`);
   check("every ModuleProgress module belongs to the enrolled course", wrongCourse === 0, `${wrongCourse} mismatched`);
 
+  // ---- per-question evidence agrees with the stored totals (Gap Finder)
+  const splitMismatch = await one(`
+    SELECT count(*) n FROM (
+      SELECT r."assessmentId", r."studentId", r.score, sum(x.marks) total
+      FROM "AssessmentResult" r
+      JOIN "AssessmentResponse" x ON x."assessmentId" = r."assessmentId" AND x."studentId" = r."studentId"
+      GROUP BY 1, 2, 3
+    ) t WHERE t.total <> t.score`);
+  check("per-question marks sum to each AssessmentResult.score", splitMismatch === 0, `${splitMismatch} mismatched`);
+  const overMax = await one(`SELECT count(*) n FROM "AssessmentResponse" WHERE marks > "maxMarks" OR marks < 0`);
+  check("no question scored above its marks", overMax === 0, `${overMax} over`);
+
   // ---- demo accounts exist
   const demo = await db.user.findMany({
     where: { email: { in: ["student@eduos.pk", "instructor@eduos.pk", "admin@eduos.pk"] } },

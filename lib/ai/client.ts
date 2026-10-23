@@ -11,6 +11,10 @@ import { recordEvent } from "../ops";
  */
 
 export const MODEL = () => process.env.LLM_MODEL || "qwen-plus";
+/** Reads answer-sheet photos: vision + reasoning in one call (Alibaba Model Studio, intl). */
+export const VISION_MODEL = () => process.env.LLM_VISION_MODEL || "qwen3-vl-plus";
+/** Urdu output: Qwen-MT lists Urdu as a supported target language. */
+export const TRANSLATE_MODEL = () => process.env.LLM_TRANSLATE_MODEL || "qwen-mt-flash";
 
 const TIMEOUT_MS = 45_000;
 const MAX_TOOL_ROUNDS = 3;
@@ -116,17 +120,29 @@ export async function chatJSON<T>(args: {
   user: string;
   schema: ZodType<T, any, any>;
   temperature?: number;
+  /** Override the model (e.g. VISION_MODEL()). */
+  model?: string;
+  /** Images as data: URLs, sent alongside the text (requires a vision model). */
+  images?: string[];
+  maxTokens?: number;
 }): Promise<AiResult<T>> {
   const provider = getProvider();
   if (!provider) return { ok: false, reason: "ai_disabled" };
   try {
+    const userContent = args.images?.length
+      ? [
+          ...args.images.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+          { type: "text" as const, text: args.user },
+        ]
+      : args.user;
     const res = await provider.chat({
-      model: MODEL(),
+      model: args.model ?? MODEL(),
       temperature: args.temperature ?? 0.2,
       messages: [
         { role: "system", content: args.system + JSON_RULE },
-        { role: "user", content: args.user },
+        { role: "user", content: userContent },
       ],
+      maxTokens: args.maxTokens,
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
 
@@ -221,6 +237,35 @@ export async function chatWithTools(args: {
     });
     const answer = (final.content ?? "").trim();
     return answer ? { ok: true, data: { answer, used } } : { ok: false, reason: "empty_answer" };
+  } catch (e) {
+    return { ok: false, reason: aiErrorCode(e) };
+  }
+}
+
+/**
+ * Translate to Urdu with Qwen-MT. Course vocabulary ("loop", "API", "React") stays in English
+ * via the glossary, the way Pakistani trainers actually teach. Qwen-MT takes exactly one user
+ * message and no system prompt. Never throws.
+ */
+export async function translateToUrdu(text: string, keepTerms: string[] = []): Promise<AiResult<string>> {
+  const provider = getProvider();
+  if (!provider) return { ok: false, reason: "ai_disabled" };
+  try {
+    const res = await provider.chat({
+      model: TRANSLATE_MODEL(),
+      temperature: 0,
+      messages: [{ role: "user", content: text.slice(0, 6000) }],
+      extraBody: {
+        translation_options: {
+          source_lang: "auto",
+          target_lang: process.env.LLM_URDU_TARGET || "Urdu",
+          ...(keepTerms.length ? { terms: keepTerms.map((t) => ({ source: t, target: t })) } : {}),
+        },
+      },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    const out = (res.content ?? "").trim();
+    return out ? { ok: true, data: out } : { ok: false, reason: "empty_answer" };
   } catch (e) {
     return { ok: false, reason: aiErrorCode(e) };
   }

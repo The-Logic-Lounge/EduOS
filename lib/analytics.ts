@@ -580,3 +580,114 @@ export async function skillProgression(studentId: string): Promise<SkillProgress
     })
     .sort((a, b) => b.points.length - a.points.length || b.currentScore - a.currentScore);
 }
+
+// ================================================================== learning gaps
+// Gap Finder's numbers. A "gap" is a concept whose mastery (marks earned / marks possible
+// across every answered question on that concept) is below GAP_THRESHOLD. Same definition
+// for the student, the trainer and management, so the three views can never disagree.
+
+export const GAP_THRESHOLD = 60;
+
+export type ConceptMastery = {
+  concept: string;
+  skillId: string | null;
+  mastery: number;   // 0-100, one decimal
+  earned: number;
+  possible: number;
+  questions: number; // answered questions behind this number
+  isGap: boolean;
+};
+
+type MasteryRow = { concept: string; skillId: string | null; _sum: { marks: number | null; maxMarks: number | null }; _count: { _all: number } };
+
+function toMastery(r: MasteryRow): ConceptMastery {
+  const earned = r._sum.marks ?? 0;
+  const possible = r._sum.maxMarks ?? 0;
+  const mastery = pct(earned, possible);
+  return { concept: r.concept, skillId: r.skillId, mastery, earned, possible, questions: r._count._all, isGap: possible > 0 && mastery < GAP_THRESHOLD };
+}
+
+/** One student's mastery per concept, weakest first, with the answers behind each gap. */
+export async function studentGaps(studentId: string) {
+  const rows = (await db.assessmentResponse.groupBy({
+    by: ["concept", "skillId"],
+    where: { studentId },
+    _sum: { marks: true, maxMarks: true },
+    _count: { _all: true },
+  })) as MasteryRow[];
+  const concepts = rows.map(toMastery).sort((a, b) => a.mastery - b.mastery);
+  const gapConcepts = concepts.filter((c) => c.isGap).map((c) => c.concept);
+  const evidence = gapConcepts.length
+    ? await db.assessmentResponse.findMany({
+        where: { studentId, concept: { in: gapConcepts } },
+        orderBy: { createdAt: "desc" },
+        select: {
+          concept: true, questionId: true, answer: true, marks: true, maxMarks: true, feedback: true, gradedBy: true, source: true,
+          assessment: { select: { id: true, title: true, questions: true } },
+        },
+      })
+    : [];
+  return { threshold: GAP_THRESHOLD, concepts, gaps: concepts.filter((c) => c.isGap), evidence };
+}
+
+/** A batch's mastery per concept, and for each gap concept the students who share it —
+ *  the trainer's re-teach groups. */
+export async function batchGaps(batchId: string) {
+  const where = { assessment: { batchId } };
+  const [byConcept, byStudent, roster] = await Promise.all([
+    db.assessmentResponse.groupBy({ by: ["concept", "skillId"], where, _sum: { marks: true, maxMarks: true }, _count: { _all: true } }) as Promise<MasteryRow[]>,
+    db.assessmentResponse.groupBy({ by: ["studentId", "concept"], where, _sum: { marks: true, maxMarks: true } }),
+    db.enrollment.findMany({ where: { batchId }, select: { studentId: true, student: { select: { rollNo: true, user: { select: { name: true } } } } } }),
+  ]);
+  const nameOf = new Map(roster.map((e) => [e.studentId, { name: e.student.user.name, rollNo: e.student.rollNo }]));
+  const groups = new Map<string, { studentId: string; name: string; rollNo: string; mastery: number }[]>();
+  for (const r of byStudent) {
+    const m = pct(r._sum.marks ?? 0, r._sum.maxMarks ?? 0);
+    if ((r._sum.maxMarks ?? 0) === 0 || m >= GAP_THRESHOLD) continue;
+    const who = nameOf.get(r.studentId);
+    if (!who) continue;
+    if (!groups.has(r.concept)) groups.set(r.concept, []);
+    groups.get(r.concept)!.push({ studentId: r.studentId, ...who, mastery: m });
+  }
+  const concepts = byConcept.map(toMastery).map((c) => ({
+    ...c,
+    studentsBelow: (groups.get(c.concept) ?? []).sort((a, b) => a.mastery - b.mastery),
+  }));
+  // Re-teach priority: how many students share the gap, then how deep it is.
+  concepts.sort((a, b) => b.studentsBelow.length - a.studentsBelow.length || a.mastery - b.mastery);
+  return { threshold: GAP_THRESHOLD, enrolled: roster.length, concepts };
+}
+
+/** Institute-wide gap map: every course's concepts with mastery and how many students are
+ *  below the line. Tenant-scoped like every other query. */
+export async function instituteGapMap() {
+  const [rows, perStudent, assessments] = await Promise.all([
+    db.assessmentResponse.groupBy({ by: ["assessmentId", "concept"], _sum: { marks: true, maxMarks: true }, _count: { _all: true } }),
+    db.assessmentResponse.groupBy({ by: ["assessmentId", "studentId", "concept"], _sum: { marks: true, maxMarks: true } }),
+    db.assessment.findMany({ select: { id: true, batch: { select: { id: true, code: true, course: { select: { id: true, code: true, title: true } } } } } }),
+  ]);
+  const courseOf = new Map(assessments.map((a) => [a.id, a.batch.course]));
+  const key = (courseId: string, concept: string) => `${courseId}\u0000${concept}`;
+  const cells = new Map<string, { courseId: string; courseCode: string; courseTitle: string; concept: string; earned: number; possible: number; below: Set<string> }>();
+  for (const r of rows) {
+    const c = courseOf.get(r.assessmentId);
+    if (!c) continue;
+    const k = key(c.id, r.concept);
+    const cell = cells.get(k) ?? { courseId: c.id, courseCode: c.code, courseTitle: c.title, concept: r.concept, earned: 0, possible: 0, below: new Set<string>() };
+    cell.earned += r._sum.marks ?? 0;
+    cell.possible += r._sum.maxMarks ?? 0;
+    cells.set(k, cell);
+  }
+  for (const r of perStudent) {
+    const c = courseOf.get(r.assessmentId);
+    if (!c) continue;
+    const possible = r._sum.maxMarks ?? 0;
+    if (possible > 0 && pct(r._sum.marks ?? 0, possible) < GAP_THRESHOLD) cells.get(key(c.id, r.concept))?.below.add(r.studentId);
+  }
+  const list = [...cells.values()].map((c) => ({
+    courseId: c.courseId, courseCode: c.courseCode, courseTitle: c.courseTitle, concept: c.concept,
+    mastery: pct(c.earned, c.possible), studentsBelow: c.below.size, isGap: c.possible > 0 && pct(c.earned, c.possible) < GAP_THRESHOLD,
+  }));
+  list.sort((a, b) => b.studentsBelow - a.studentsBelow || a.mastery - b.mastery);
+  return { threshold: GAP_THRESHOLD, cells: list };
+}

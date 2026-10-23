@@ -91,14 +91,14 @@ enum DayOfWeek {
 }
 
 model User {
-  id             String        @id @default(cuid())
-  email          String        @unique
+  id             String         @id @default(cuid())
+  email          String         @unique
   passwordHash   String
   name           String
   role           Role
   organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  createdAt      DateTime      @default(now())
+  organization   Organization?  @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  createdAt      DateTime       @default(now())
   student        Student?
   instructor     Instructor?
   notifications  Notification[]
@@ -118,11 +118,13 @@ model Student {
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
-  enrollments  Enrollment[]
-  attendance   Attendance[]
-  submissions  Submission[]
-  results      AssessmentResult[]
-  skills       StudentSkill[]
+  enrollments Enrollment[]
+  attendance  Attendance[]
+  submissions Submission[]
+  results     AssessmentResult[]
+  skills      StudentSkill[]
+  responses   AssessmentResponse[]
+  vivas       VivaSession[]
 
   @@index([organizationId])
 }
@@ -138,9 +140,9 @@ model Instructor {
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
-  batches       Batch[]
-  availability  InstructorAvailability[]
-  schedules     Schedule[]
+  batches      Batch[]
+  availability InstructorAvailability[]
+  schedules    Schedule[]
 
   @@index([organizationId])
 }
@@ -155,9 +157,9 @@ model Course {
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
-  modules Module[]
-  batches Batch[]
-  skills  CourseSkill[]
+  modules   Module[]
+  batches   Batch[]
+  skills    CourseSkill[]
   knowledge KnowledgeSource[]
 
   @@index([organizationId])
@@ -330,7 +332,8 @@ model Assessment {
   scheduledAt DateTime
   questions   Json?
 
-  results AssessmentResult[]
+  results   AssessmentResult[]
+  responses AssessmentResponse[]
 
   @@index([batchId])
   @@index([batchId, scheduledAt])
@@ -373,6 +376,9 @@ model StudentSkill {
   score         Int
   evidenceCount Int        @default(0)
   updatedAt     DateTime   @updatedAt
+  /// Set when the student passed a Proof-of-Skill viva for this skill (VivaSession.id in verifiedBy).
+  verifiedAt    DateTime?
+  verifiedBy    String?
 
   @@unique([studentId, skillId])
   @@index([studentId])
@@ -409,9 +415,9 @@ model Classroom {
 }
 
 model Schedule {
-  id           String    @id @default(cuid())
+  id           String     @id @default(cuid())
   batchId      String
-  batch        Batch     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  batch        Batch      @relation(fields: [batchId], references: [id], onDelete: Cascade)
   instructorId String
   instructor   Instructor @relation(fields: [instructorId], references: [id])
   classroomId  String
@@ -419,8 +425,8 @@ model Schedule {
   day          DayOfWeek
   startTime    String
   endTime      String
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
   @@index([batchId])
   @@index([instructorId])
@@ -456,16 +462,16 @@ model Notification {
 }
 
 model KnowledgeSource {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   courseId   String
-  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  course     Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
   topic      String
   url        String
   selector   String?
-  status     String   @default("pending")
+  status     String    @default("pending")
   ingestedAt DateTime?
   error      String?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   documents KnowledgeDocument[]
 
@@ -473,13 +479,13 @@ model KnowledgeSource {
 }
 
 model KnowledgeDocument {
-  id        String   @id @default(cuid())
+  id        String          @id @default(cuid())
   sourceId  String
   source    KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   url       String?
   content   String
   metadata  Json?
-  createdAt DateTime @default(now())
+  createdAt DateTime        @default(now())
 
   chunks KnowledgeChunk[]
 
@@ -487,12 +493,12 @@ model KnowledgeDocument {
 }
 
 model KnowledgeChunk {
-  id         String   @id @default(cuid())
+  id         String                       @id @default(cuid())
   documentId String
-  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  document   KnowledgeDocument            @relation(fields: [documentId], references: [id], onDelete: Cascade)
   text       String
   embedding  Unsupported("vector(1536)")?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime                     @default(now())
 
   @@index([documentId])
 }
@@ -516,7 +522,7 @@ model ContactSubmission {
 model OpsEvent {
   id             String   @id @default(cuid())
   at             DateTime @default(now())
-  kind           String   // http | db | ai | auth | error
+  kind           String // http | db | ai | auth | error
   name           String
   ok             Boolean
   status         Int?
@@ -525,11 +531,62 @@ model OpsEvent {
   dbMs           Int?
   tokens         Int?
   organizationId String?
-  subject        String?  // hashed key for throttling (never a raw email)
+  subject        String? // hashed key for throttling (never a raw email)
   correlationId  String?
   detail         String?
 
   @@index([kind, at])
   @@index([at])
   @@index([kind, subject, at])
+}
+
+/// One student's answer to one question of an assessment: the evidence Gap Finder reads.
+/// `questionId` refers to an entry in Assessment.questions (JSON). Marks are per question,
+/// so a gap is "this concept, this student", not just a low total.
+model AssessmentResponse {
+  id           String     @id @default(cuid())
+  assessmentId String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  questionId   String
+  answer       String
+  marks        Int
+  maxMarks     Int
+  concept      String
+  skillId      String?
+  feedback     String?
+  /// online | scan | seed
+  source       String     @default("online")
+  /// ai | trainer | key (exact-match fallback) | seed
+  gradedBy     String     @default("ai")
+  confidence   Float?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([assessmentId, studentId, questionId])
+  @@index([studentId])
+  @@index([assessmentId])
+  @@index([concept])
+}
+
+/// A Proof-of-Skill viva: Qwen questions the student on one skill until it is confident,
+/// and a pass stamps StudentSkill.verifiedAt. The transcript is the evidence.
+model VivaSession {
+  id          String    @id @default(cuid())
+  studentId   String
+  student     Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  skillId     String
+  concept     String?
+  /// in_progress | passed | failed
+  status      String    @default("in_progress")
+  language    String    @default("en")
+  transcript  Json      @default("[]")
+  score       Int?
+  verdict     String?
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([studentId])
+  @@index([skillId])
 }

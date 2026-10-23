@@ -77,6 +77,8 @@ const SCOPE: Record<string, (o: string) => Where> = {
   attendance: (o) => ({ session: byBatch(o) }),
   submission: (o) => ({ assignment: byBatch(o) }),
   assessmentResult: (o) => ({ assessment: byBatch(o) }),
+  assessmentResponse: (o) => ({ assessment: byBatch(o) }),
+  vivaSession: (o) => ({ student: { organizationId: o } }),
   moduleProgress: (o) => ({ enrollment: byBatch(o) }),
   studentSkill: (o) => ({ student: { organizationId: o } }),
   instructorAvailability: (o) => ({ instructor: { organizationId: o } }),

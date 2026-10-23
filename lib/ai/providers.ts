@@ -1,9 +1,12 @@
 import OpenAI from "openai";
 import type { ToolSpec } from "./client";
 
+/** OpenAI-style multimodal part: text, or an image as a data: URL (Qwen-VL). */
+export type ContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
+
 export type ChatMessage =
   | { role: "system"; content: string }
-  | { role: "user"; content: string }
+  | { role: "user"; content: string | ContentPart[] }
   | { role: "assistant"; content: string | null; tool_calls?: ToolCall[] }
   | { role: "tool"; tool_call_id: string; content: string };
 
@@ -20,6 +23,9 @@ export type ChatOptions = {
   tools?: ToolSpec[];
   tool_choice?: "auto" | "none" | { type: "function"; function: { name: string } };
   signal?: AbortSignal;
+  /** DashScope-specific top-level body fields (e.g. Qwen-MT `translation_options`). */
+  extraBody?: Record<string, unknown>;
+  maxTokens?: number;
 };
 
 export type ChatResponse = {
@@ -63,7 +69,9 @@ export class OpenAIProvider implements LLMProvider {
         messages: opts.messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
         tools: toOpenAITools(opts.tools),
         tool_choice: opts.tools && opts.tools.length > 0 ? (opts.tool_choice ?? "auto") : undefined,
-      },
+        ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
+        ...(opts.extraBody ?? {}),
+      } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
       opts.signal ? { signal: opts.signal } : undefined,
     );
     const msg = res.choices[0]?.message;
