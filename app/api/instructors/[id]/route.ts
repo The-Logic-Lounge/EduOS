@@ -11,11 +11,12 @@ import {
   getInstructorAssessments,
   getInstructorCourseProgress,
 } from "@/lib/instructors";
+import { route } from "@/lib/ops-route";
 
 export const dynamic = "force-dynamic";
 
 /** GET /api/instructors/[id] — full instructor detail for management. */
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function GET_(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireRole("MANAGEMENT");
     const { id } = await params;
@@ -37,7 +38,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 /** PATCH /api/instructors/[id] — update instructor profile or login. */
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function PATCH_(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireRole("MANAGEMENT");
     const { id } = await params;
@@ -87,7 +88,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 /** DELETE /api/instructors/[id] — remove an instructor and their login. */
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function DELETE_(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireRole("MANAGEMENT");
     const { id } = await params;
@@ -107,3 +108,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     return handleApiError(error);
   }
 }
+
+export const GET = route("/api/instructors/[id]", GET_);
+export const PATCH = route("/api/instructors/[id]", PATCH_);
+export const DELETE = route("/api/instructors/[id]", DELETE_);

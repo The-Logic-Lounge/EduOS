@@ -509,3 +509,27 @@ model ContactSubmission {
 
   @@index([createdAt])
 }
+
+/// Operational telemetry for the internal health dashboard and login throttling.
+/// Append-only. Never stores prompts, passwords, tokens or record payloads:
+/// `name` is a route template / model.op / provider:model, `detail` a redacted summary.
+model OpsEvent {
+  id             String   @id @default(cuid())
+  at             DateTime @default(now())
+  kind           String   // http | db | ai | auth | error
+  name           String
+  ok             Boolean
+  status         Int?
+  ms             Int?
+  dbCount        Int?
+  dbMs           Int?
+  tokens         Int?
+  organizationId String?
+  subject        String?  // hashed key for throttling (never a raw email)
+  correlationId  String?
+  detail         String?
+
+  @@index([kind, at])
+  @@index([at])
+  @@index([kind, subject, at])
+}

@@ -1,8 +1,9 @@
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { ok, handleApiError } from "@/lib/api";
+import { route } from "@/lib/ops-route";
 
-export async function PATCH() {
+async function PATCH_() {
   try {
     const user = await requireRole("STUDENT", "INSTRUCTOR", "MANAGEMENT");
     const result = await db.notification.updateMany({
@@ -14,3 +15,5 @@ export async function PATCH() {
     return handleApiError(error);
   }
 }
+
+export const PATCH = route("/api/notifications/read-all", PATCH_);

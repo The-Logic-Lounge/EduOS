@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 import { notifyBatch } from "@/lib/notifications";
+import { route } from "@/lib/ops-route";
 
 const QuestionIn = z
   .object({
@@ -22,7 +23,7 @@ const AssessmentIn = z.object({
   questions: z.array(QuestionIn).max(100).optional(),
 });
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   try {
     const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
     const parsed = AssessmentIn.safeParse(await req.json().catch(() => null));
@@ -94,3 +95,5 @@ export async function POST(req: Request) {
     return handleApiError(error);
   }
 }
+
+export const POST = route("/api/assessments", POST_);

@@ -2,13 +2,14 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
+import { route } from "@/lib/ops-route";
 
 const SubmissionUpdate = z.object({
   score: z.number().int().min(0).optional().nullable(),
   status: z.enum(["SUBMITTED", "LATE", "MISSING", "GRADED"]).optional(),
 });
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function PATCH_(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
     const { id } = await params;
@@ -48,3 +49,5 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return handleApiError(error);
   }
 }
+
+export const PATCH = route("/api/submissions/[id]", PATCH_);

@@ -1,10 +1,11 @@
 import { requireRole } from "@/lib/auth";
 import { fail, handleApiError, ok } from "@/lib/api";
 import { askCommandCenter } from "@/lib/ai/features";
+import { route } from "@/lib/ops-route";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request: Request) {
+async function POST_(request: Request) {
   try {
     await requireRole("MANAGEMENT");
     const body = (await request.json().catch(() => ({}))) as { question?: string };
@@ -15,3 +16,5 @@ export async function POST(request: Request) {
     return handleApiError(error);
   }
 }
+
+export const POST = route("/api/ai/ask", POST_);

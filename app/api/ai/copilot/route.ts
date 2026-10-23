@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth";
-import { fail, handleApiError, ok } from "@/lib/api";
+import { db } from "@/lib/db";
+import { AuthError, fail, handleApiError, ok } from "@/lib/api";
 import {
   copilotAnalysis,
   copilotGenerate,
@@ -7,6 +8,7 @@ import {
   copilotStudentAnalysis,
   type GenerateKind,
 } from "@/lib/ai/features";
+import { route } from "@/lib/ops-route";
 
 export const dynamic = "force-dynamic";
 
@@ -21,9 +23,9 @@ const KINDS: GenerateKind[] = ["quiz", "assessment", "revision"];
  *  - { batchId, question: string }        → Q&A chat
  *  - { batchId, studentId: string }       → student analysis
  */
-export async function POST(request: Request) {
+async function POST_(request: Request) {
   try {
-    await requireRole("INSTRUCTOR", "MANAGEMENT");
+    const user = await requireRole("INSTRUCTOR", "MANAGEMENT");
     const body = (await request.json().catch(() => ({}))) as {
       batchId?: string;
       kind?: string;
@@ -34,9 +36,19 @@ export async function POST(request: Request) {
     const batchId = (body.batchId ?? "").trim();
     if (!batchId) return fail("batchId is required");
 
-    // Student analysis mode
+    const batch = await db.batch.findUnique({ where: { id: batchId }, select: { instructorId: true } });
+    if (!batch) return fail("Batch not found", 404);
+    if (user.role === "INSTRUCTOR" && batch.instructorId !== user.instructorId) throw new AuthError("Forbidden", 403);
+
+    // Student analysis mode — the UI sends a roll number; a student id is accepted too.
     if (body.studentId) {
-      return ok(await copilotStudentAnalysis(batchId, body.studentId.trim()));
+      const ref = body.studentId.trim();
+      const enrolled = await db.enrollment.findFirst({
+        where: { batchId, student: { OR: [{ id: ref }, { rollNo: ref }] } },
+        select: { student: { select: { rollNo: true } } },
+      });
+      if (!enrolled) return fail("Student not found in this batch", 404);
+      return ok(await copilotStudentAnalysis(batchId, enrolled.student.rollNo));
     }
 
     // Q&A chat mode
@@ -56,3 +68,5 @@ export async function POST(request: Request) {
     return handleApiError(error);
   }
 }
+
+export const POST = route("/api/ai/copilot", POST_);

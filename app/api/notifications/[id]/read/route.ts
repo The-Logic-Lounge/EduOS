@@ -1,8 +1,9 @@
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
+import { route } from "@/lib/ops-route";
 
-export async function PATCH(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function PATCH_(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireRole("STUDENT", "INSTRUCTOR", "MANAGEMENT");
     const { id } = await params;
@@ -22,3 +23,5 @@ export async function PATCH(_req: Request, { params }: { params: Promise<{ id: s
     return handleApiError(error);
   }
 }
+
+export const PATCH = route("/api/notifications/[id]/read", PATCH_);

@@ -20,19 +20,23 @@ student record is used, and this project shares nothing with the live GSS school
   management pages under fan-out.
 - LLM: Alibaba Model Studio (DashScope) OpenAI-compatible, `qwen-plus`.
 
+- Functions are pinned to **sin1** (`vercel.json`) next to the Singapore DB. Before this they
+  ran in iad1 (Washington): every query crossed the Pacific (warm public API ~1.8 s).
+
 ## Demo logins (password: `password`)
 | Role | Email | Who |
 |---|---|---|
 | Student | `student@eduos.pk` | Ali Hassan — star student, batch PY-12 |
 | Instructor | `instructor@eduos.pk` | Sir Kamran Aziz — teaches PY-12 |
-| Management | `admin@eduos.pk` | Dr. Shahid Mehmood |
+| Management | `admin@eduos.pk` | Dr. Shahid Mehmood — Bano Qabil (`org_bq`), also platform operator |
+| Management | `admin@alkhidmat.pk` | Ayesha Siddiqui — Alkhidmat (`org_akf`), the second tenant |
 
 ## Stack
 Next.js 15 (App Router) · TypeScript · Prisma 6 · PostgreSQL · Tailwind v4 (`@theme`, no
 config file) · Recharts · hand-rolled UI primitives. API routes only, **zero server actions**.
 Auth is bcrypt + a signed JWT cookie (`jose`) — no external auth provider.
 
-## The two rules that hold this together
+## The three rules that hold this together
 
 1. **`lib/analytics.ts` is the only place a performance number is computed.** Every page,
    API route, AI context builder and report calls it. Three developers rendering three
@@ -46,6 +50,13 @@ Auth is bcrypt + a signed JWT cookie (`jose`) — no external auth provider.
    or a statistic. Every feature in `lib/ai/features.ts` returns
    `{ source: "ai" | "fallback", data }` and **never throws**: `AI_ENABLED=false`, a missing
    key, a 500 or unparseable JSON all still render real computed content.
+3. **Tenancy is enforced in the client, not in routes.** `db` (`lib/db.ts`) is extended by
+   `lib/tenant.ts`: every query is filtered to the signed-in user's org (directly on the 6 root
+   models, through the parent relation on the rest), creates are stamped, and a foreign key
+   into another org is a 404. Import `db` from `lib/db` — never `rawDb` from `lib/db-base`
+   (only `lib/ops*`, `lib/tenant`, `lib/auth`'s throttle use it). **Raw SQL bypasses the
+   extension**: scope it by hand with `currentOrgId()` (see `lib/management.ts skillStats`).
+   Routes still own *role and ownership* checks inside one org (instructor ↔ own batches).
 
 ## Commands
 ```bash
@@ -57,7 +68,20 @@ npm run check          # 12 seed-consistency invariants, exits non-zero
 npm run smoke          # node scripts/smoke.mjs <baseUrl>
 ```
 
+## Observability
+`/management/system` (System Health) is platform telemetry, visible only to emails in
+`OPS_ADMIN_EMAILS` (fails closed in prod). Data: the append-only `OpsEvent` table, written via
+`after()` by `route()` (`lib/ops-route.ts`, wraps every `/api` handler — new routes must use it),
+the db metrics extension (queries ≥300 ms or failed), `lib/ai/client.ts` (every provider call),
+`lib/api.ts` (denials, 500s) and login. Never store prompts, emails or record values there.
+Docs: `docs/observability/EDUOS_MONITORING_ARCHITECTURE.md`.
+
 ## Verification — a green build is not evidence
+Run against a production build (`next build && next start`) on a **scratch DB** (runbook:
+`docs/operations/EDUOS_DEPLOYMENT_RUNBOOK.md`):
+`scripts/tenant-isolation.mjs` (cross-tenant + cross-role, attempts writes — scratch only),
+`scripts/ops-check.mjs` (headers, cookie flags, throttle, dashboard access, telemetry),
+`scripts/load-test.mjs` (bounded, read-only).
 `scripts/smoke.mjs` logs in as all three roles, renders every page, and greps the HTML for
 Server Component error digests (a crashed RSC still returns 200). It must PASS against a
 **production** server before anything ships. `scripts/check-consistency.mjs` asserts the

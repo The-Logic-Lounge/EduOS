@@ -4,16 +4,18 @@ import { db } from "@/lib/db";
 import { requireRole, orgWhere } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 import { InstructorCreate, zodMessage } from "@/lib/schemas/instructor";
+import { route } from "@/lib/ops-route";
 
 export const dynamic = "force-dynamic";
 
 /** GET /api/instructors — list all instructors for management. */
-export async function GET() {
+async function GET_() {
   try {
     const user = await requireRole("MANAGEMENT");
     const rows = await db.instructor.findMany({
       where: orgWhere(user),
       orderBy: { employeeNo: "asc" },
+      take: 500,
       select: {
         id: true,
         employeeNo: true,
@@ -42,7 +44,7 @@ export async function GET() {
 }
 
 /** POST /api/instructors — create a new instructor login and profile. */
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   try {
     const user = await requireRole("MANAGEMENT");
 
@@ -86,3 +88,6 @@ export async function POST(req: Request) {
     return handleApiError(error);
   }
 }
+
+export const GET = route("/api/instructors", GET_);
+export const POST = route("/api/instructors", POST_);

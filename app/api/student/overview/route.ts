@@ -1,10 +1,11 @@
 import { requireUser } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 import { studentOverview } from "@/lib/student-overview";
+import { route } from "@/lib/ops-route";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+async function GET_() {
   try {
     const user = await requireUser();
     if (!user.studentId) return fail("Not a student account", 403);
@@ -13,3 +14,5 @@ export async function GET() {
     return handleApiError(error);
   }
 }
+
+export const GET = route("/api/student/overview", GET_);

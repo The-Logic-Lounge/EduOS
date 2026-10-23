@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { currentOrgId } from "./tenant";
 import {
   batchPerformanceMany,
   instructorPerformanceMany,
@@ -213,6 +214,8 @@ export async function skillStats(): Promise<SkillStat[]> {
     db.skill.findMany({ select: { id: true, name: true, category: true } }),
   ]);
 
+  // Raw SQL bypasses the tenant extension, so scope it by hand (null = system context).
+  const org = await currentOrgId();
   // One aggregate instead of skillGaps() per student (240 students x 2 queries = P2024).
   // Same rule as skillGaps(): a course-targeted skill the student has not reached.
   const gapRows = await db.$queryRaw<{ skillId: string; gaps: bigint }[]>`
@@ -222,11 +225,12 @@ export async function skillStats(): Promise<SkillStat[]> {
     JOIN "CourseSkill" cs ON cs."courseId" = b."courseId"
     LEFT JOIN "StudentSkill" ss
            ON ss."studentId" = e."studentId" AND ss."skillId" = cs."skillId"
-    WHERE ss.id IS NULL
+    WHERE (${org}::text IS NULL OR b."organizationId" = ${org})
+      AND (ss.id IS NULL
        OR (CASE ss.level        WHEN 'BEGINNER' THEN 1 WHEN 'INTERMEDIATE' THEN 2
                                 WHEN 'ADVANCED' THEN 3 WHEN 'EXPERT' THEN 4 END)
         < (CASE cs."targetLevel" WHEN 'BEGINNER' THEN 1 WHEN 'INTERMEDIATE' THEN 2
-                                WHEN 'ADVANCED' THEN 3 WHEN 'EXPERT' THEN 4 END)
+                                WHEN 'ADVANCED' THEN 3 WHEN 'EXPERT' THEN 4 END))
     GROUP BY cs."skillId"`;
   const gapBySkillId = new Map(gapRows.map((r) => [r.skillId, Number(r.gaps)]));
 
@@ -246,16 +250,20 @@ export async function attendanceDistribution() {
   return rows.map((r) => ({ status: r.status as string, count: r._count._all }));
 }
 
-let _overviewCache: { at: number; data: ManagementOverview } | null = null;
+// One slot per org: the cached value is tenant data, so the org is part of the key.
+// (A single module-level slot served one institute's dashboard to the other's admin.)
+const _overviewCache = new Map<string, { at: number; data: ManagementOverview }>();
 const OVERVIEW_TTL_MS = 60_000;
 
 export function invalidateOverviewCache() {
-  _overviewCache = null;
+  _overviewCache.clear();
 }
 
 export async function managementOverview(): Promise<ManagementOverview> {
-  if (_overviewCache && Date.now() - _overviewCache.at < OVERVIEW_TTL_MS) {
-    return _overviewCache.data;
+  const cacheKey = (await currentOrgId()) ?? "system";
+  const hit = _overviewCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < OVERVIEW_TTL_MS) {
+    return hit.data;
   }
   // Fetch all batch IDs once, compute performance once, then derive every row from
   // the same map. This cuts the query count from ~18 (three batchPerformanceMany
@@ -348,6 +356,6 @@ export async function managementOverview(): Promise<ManagementOverview> {
   ]);
 
   const result: ManagementOverview = { summary, courses, batches, instructors, attendance, skills };
-  _overviewCache = { at: Date.now(), data: result };
+  _overviewCache.set(cacheKey, { at: Date.now(), data: result });
   return result;
 }

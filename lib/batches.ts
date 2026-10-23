@@ -45,6 +45,7 @@ export async function getBatches(orgId?: string): Promise<BatchRow[]> {
   const rows = await db.batch.findMany({
     where: orgId ? { organizationId: orgId } : {},
     orderBy: [{ status: "asc" }, { startDate: "desc" }],
+    take: 500,
     include: {
       course: { select: { id: true, code: true, title: true } },
       instructor: { select: { id: true, user: { select: { name: true } } } },

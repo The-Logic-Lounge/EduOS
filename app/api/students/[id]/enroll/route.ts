@@ -3,10 +3,11 @@ import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 import { EnrollIn, zodMessage } from "@/lib/schemas/student";
 import { backfillEnrollment } from "@/lib/students";
+import { route } from "@/lib/ops-route";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function POST_(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireRole("MANAGEMENT");
     const { id } = await params;
@@ -48,3 +49,5 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return handleApiError(error);
   }
 }
+
+export const POST = route("/api/students/[id]/enroll", POST_);

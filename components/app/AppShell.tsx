@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import type { Role } from "@prisma/client";
-import { navFor } from "@/lib/nav";
+import { navFor, SYSTEM_NAV, type NavItem } from "@/lib/nav";
 import { Wordmark } from "@/components/public/Wordmark";
 import { NotificationBell } from "./NotificationBell";
 
@@ -16,6 +16,8 @@ const ROLE_LABEL: Record<Role, string> = {
 
 export type AppShellProps = {
   user: { name: string; role: Role };
+  /** Platform operators also get the internal System Health page (lib/platform.ts). */
+  showSystem?: boolean;
   children: React.ReactNode;
 };
 
@@ -27,12 +29,16 @@ function BrandLink() {
   );
 }
 
-function NavList({ role, onNavigate }: { role: Role; onNavigate?: () => void }) {
+function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => void }) {
   const pathname = usePathname();
+  // Longest matching prefix wins, so /management/system lights "System Health", not "Dashboard".
+  const activeHref = items
+    .filter((i) => pathname === i.href || pathname.startsWith(`${i.href}/`))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
   return (
     <nav className="flex flex-col">
-      {navFor(role).map((item) => {
-        const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+      {items.map((item) => {
+        const active = item.href === activeHref;
         return (
           <Link
             key={item.href}
@@ -49,7 +55,7 @@ function NavList({ role, onNavigate }: { role: Role; onNavigate?: () => void }) 
               aria-hidden
               className={`mono text-[0.625rem] tabular-nums ${active ? "text-accent" : "text-ink-3"}`}
             >
-              {String(navFor(role).indexOf(item) + 1).padStart(2, "0")}
+              {String(items.indexOf(item) + 1).padStart(2, "0")}
             </span>
             {item.label}
           </Link>
@@ -78,7 +84,8 @@ function UserBlock({ user }: { user: AppShellProps["user"] }) {
   );
 }
 
-export function AppShell({ user, children }: AppShellProps) {
+export function AppShell({ user, showSystem = false, children }: AppShellProps) {
+  const items = showSystem ? [...navFor(user.role), ...SYSTEM_NAV] : navFor(user.role);
   const [open, setOpen] = useState(false);
 
   return (
@@ -117,7 +124,7 @@ export function AppShell({ user, children }: AppShellProps) {
         <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-60 shrink-0 flex-col justify-between border-r border-hairline bg-surface lg:flex">
           <div className="py-5">
             <div className="stat px-4 pb-3">Navigation</div>
-            <NavList role={user.role} />
+            <NavList items={items} />
           </div>
           <UserBlock user={user} />
         </aside>
@@ -133,7 +140,7 @@ export function AppShell({ user, children }: AppShellProps) {
             <aside className="absolute inset-y-0 left-0 flex w-[16rem] flex-col justify-between border-r border-hairline bg-surface shadow-2xl">
               <div className="py-5">
                 <div className="stat px-4 pb-3">Navigation</div>
-                <NavList role={user.role} onNavigate={() => setOpen(false)} />
+                <NavList items={items} onNavigate={() => setOpen(false)} />
               </div>
               <UserBlock user={user} />
             </aside>

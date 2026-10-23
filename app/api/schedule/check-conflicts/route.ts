@@ -2,17 +2,18 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
-import { detectConflicts } from "@/lib/scheduling/engine";
+import { detectConflicts, TIME_RE } from "@/lib/scheduling/engine";
+import { route } from "@/lib/ops-route";
 
 const CheckIn = z.object({
   day: z.enum(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]),
-  startTime: z.string().regex(/^\d{2}:\d{2}$/),
-  endTime: z.string().regex(/^\d{2}:\d{2}$/),
+  startTime: z.string().regex(TIME_RE, "Must be HH:MM"),
+  endTime: z.string().regex(TIME_RE, "Must be HH:MM"),
   batchId: z.string(),
   classroomId: z.string(),
 });
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   try {
     await requireRole("MANAGEMENT");
     const parsed = CheckIn.safeParse(await req.json().catch(() => null));
@@ -42,3 +43,5 @@ export async function POST(req: Request) {
     return handleApiError(error);
   }
 }
+
+export const POST = route("/api/schedule/check-conflicts", POST_);

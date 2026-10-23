@@ -2,12 +2,13 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
+import { route } from "@/lib/ops-route";
 
 const AttendanceUpdate = z.object({
   status: z.enum(["PRESENT", "ABSENT", "LATE", "EXCUSED"]),
 });
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function PATCH_(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
     const { id } = await params;
@@ -34,7 +35,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 }
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function DELETE_(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
     const { id } = await params;
@@ -55,3 +56,6 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     return handleApiError(error);
   }
 }
+
+export const PATCH = route("/api/attendance/[id]", PATCH_);
+export const DELETE = route("/api/attendance/[id]", DELETE_);

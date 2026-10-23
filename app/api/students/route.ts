@@ -5,10 +5,11 @@ import { requireRole, orgWhere } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 import { listStudents, nextRollNo, backfillEnrollment } from "@/lib/students";
 import { StudentCreate, zodMessage } from "@/lib/schemas/student";
+import { route } from "@/lib/ops-route";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
+async function GET_(req: Request) {
   try {
     const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
     const params = new URL(req.url).searchParams;
@@ -34,7 +35,7 @@ export async function GET(req: Request) {
   }
 }
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   try {
     const user = await requireRole("MANAGEMENT");
 
@@ -88,3 +89,6 @@ export async function POST(req: Request) {
     return handleApiError(error);
   }
 }
+
+export const GET = route("/api/students", GET_);
+export const POST = route("/api/students", POST_);

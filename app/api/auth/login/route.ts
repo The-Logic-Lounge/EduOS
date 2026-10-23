@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createSession, homeFor, verifyLogin } from "@/lib/auth";
 import { fail, handleApiError, ok } from "@/lib/api";
+import { route } from "@/lib/ops-route";
 
 export const dynamic = "force-dynamic";
 
@@ -9,10 +10,12 @@ const schema = z.object({
   password: z.string().min(1),
 });
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   try {
     const { email, password } = schema.parse(await req.json());
-    const user = await verifyLogin(email, password);
+    // x-forwarded-for is set by Vercel's edge; first hop is the client.
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const user = await verifyLogin(email, password, ip);
     await createSession(user);
     return ok({ home: homeFor(user.role) });
   } catch (error) {
@@ -22,3 +25,5 @@ export async function POST(req: Request) {
     return handleApiError(error);
   }
 }
+
+export const POST = route("/api/auth/login", POST_);

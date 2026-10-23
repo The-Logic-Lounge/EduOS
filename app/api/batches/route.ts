@@ -4,11 +4,12 @@ import { requireRole, orgWhere } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 import { getBatches } from "@/lib/batches";
 import { BatchCreate, zodMessage } from "@/lib/schemas/batch";
+import { route } from "@/lib/ops-route";
 
 export const dynamic = "force-dynamic";
 
 /** GET /api/batches — list all batches for management. */
-export async function GET() {
+async function GET_() {
   try {
     const user = await requireRole("MANAGEMENT");
     const batches = await getBatches(user.organizationId);
@@ -19,7 +20,7 @@ export async function GET() {
 }
 
 /** POST /api/batches — create a new batch. */
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   try {
     const user = await requireRole("MANAGEMENT");
 
@@ -55,3 +56,6 @@ export async function POST(req: Request) {
     return handleApiError(error);
   }
 }
+
+export const GET = route("/api/batches", GET_);
+export const POST = route("/api/batches", POST_);

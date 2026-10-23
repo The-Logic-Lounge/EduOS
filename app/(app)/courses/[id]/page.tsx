@@ -7,6 +7,7 @@ import {
   getCourseAssignments,
   getCourseAssessments,
   getCourseModuleProgress,
+  canEditCourse,
 } from "@/lib/courses";
 import PageHeader from "@/components/ui/PageHeader";
 import StatTile from "@/components/ui/StatTile";
@@ -21,17 +22,18 @@ export const dynamic = "force-dynamic";
 
 export default async function CourseDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  await requirePageRole("INSTRUCTOR", "MANAGEMENT");
+  const user = await requirePageRole("INSTRUCTOR", "MANAGEMENT");
 
   const detail = await getCourseDetail(id);
   if (!detail) notFound();
 
   // Fetch supporting data in parallel
-  const [students, assignments, assessments, moduleProgress] = await Promise.all([
-    getCourseStudents(id),
-    getCourseAssignments(id),
-    getCourseAssessments(id),
-    getCourseModuleProgress(id),
+  const [students, assignments, assessments, moduleProgress, canEdit] = await Promise.all([
+    getCourseStudents(id, user),
+    getCourseAssignments(id, user),
+    getCourseAssessments(id, user),
+    getCourseModuleProgress(id, user),
+    canEditCourse(user, id),
   ]);
 
   const sortedStudents = [...students].sort((a, b) => b.perf.overall - a.perf.overall);
@@ -46,12 +48,12 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
           <div className="flex items-center gap-3">
             <span className="mono text-sm text-ink-2">{detail.code}</span>
             <Badge>{detail.level}</Badge>
-            <Link
+            {canEdit && <Link
               href={`/courses/${detail.id}/edit`}
               className="inline-flex h-10 items-center rounded-sm border border-hairline-2 bg-surface px-5 text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent"
             >
               Edit
-            </Link>
+            </Link>}
           </div>
         }
       />

@@ -1,17 +1,18 @@
 import { z } from "zod";
 import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
-import { moveSchedule } from "@/lib/scheduling/engine";
+import { moveSchedule, TIME_RE } from "@/lib/scheduling/engine";
+import { route } from "@/lib/ops-route";
 
 const MoveIn = z.object({
   scheduleId: z.string(),
   day: z.enum(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]).optional(),
-  startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-  endTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  startTime: z.string().regex(TIME_RE, "Must be HH:MM").optional(),
+  endTime: z.string().regex(TIME_RE, "Must be HH:MM").optional(),
   classroomId: z.string().optional(),
 });
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   try {
     await requireRole("MANAGEMENT");
     const parsed = MoveIn.safeParse(await req.json().catch(() => null));
@@ -28,3 +29,5 @@ export async function POST(req: Request) {
     return handleApiError(error);
   }
 }
+
+export const POST = route("/api/schedule/move", POST_);

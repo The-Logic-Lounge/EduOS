@@ -1,11 +1,10 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
-import { ok, fail, handleApiError } from "@/lib/api";
-import { getAllSchedules, detectConflicts } from "@/lib/scheduling/engine";
+import { AuthError, ok, fail, handleApiError } from "@/lib/api";
+import { getAllSchedules, detectConflicts, TIME_RE } from "@/lib/scheduling/engine";
 import { notifyBatch } from "@/lib/notifications";
-
-const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+import { route } from "@/lib/ops-route";
 
 const ScheduleIn = z.object({
   batchId: z.string().min(1),
@@ -16,14 +15,27 @@ const ScheduleIn = z.object({
   endTime: z.string().regex(TIME_RE, "Must be HH:MM"),
 });
 
-export async function GET(req: Request) {
+async function GET_(req: Request) {
   try {
     const user = await requireRole("MANAGEMENT", "INSTRUCTOR", "STUDENT");
     const { searchParams } = new URL(req.url);
     const batchId = searchParams.get("batchId");
-    const instructorId = searchParams.get("instructorId");
+    let instructorId = searchParams.get("instructorId");
 
-    if (user.role === "STUDENT" && user.studentId) {
+    if (user.role === "INSTRUCTOR") {
+      if (instructorId && instructorId !== user.instructorId) throw new AuthError("Forbidden", 403);
+      if (batchId) {
+        const batch = await db.batch.findUnique({ where: { id: batchId }, select: { instructorId: true } });
+        if (!batch) return fail("Batch not found", 404);
+        if (batch.instructorId !== user.instructorId) throw new AuthError("Forbidden", 403);
+      } else {
+        if (!user.instructorId) return ok([]);
+        instructorId = user.instructorId;
+      }
+    }
+
+    if (user.role === "STUDENT") {
+      if (!user.studentId) return ok([]);
       const enrollments = await db.enrollment.findMany({
         where: { studentId: user.studentId, status: "ACTIVE" },
         select: { batchId: true },
@@ -72,7 +84,7 @@ export async function GET(req: Request) {
   }
 }
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   try {
     const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
     const parsed = ScheduleIn.safeParse(await req.json().catch(() => null));
@@ -91,6 +103,9 @@ export async function POST(req: Request) {
       select: { id: true, instructorId: true, _count: { select: { enrollments: true } } },
     });
     if (!batch) return fail("Batch not found", 404);
+    if (user.role === "INSTRUCTOR" && batch.instructorId !== user.instructorId) {
+      return fail("You can only schedule your own batches.", 403);
+    }
 
     const [existingSchedules, classrooms, availability] = await Promise.all([
       db.schedule.findMany({ select: { id: true, batchId: true, instructorId: true, classroomId: true, day: true, startTime: true, endTime: true } }),
@@ -128,3 +143,6 @@ export async function POST(req: Request) {
     return handleApiError(error);
   }
 }
+
+export const GET = route("/api/schedule", GET_);
+export const POST = route("/api/schedule", POST_);

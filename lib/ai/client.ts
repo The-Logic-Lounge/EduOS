@@ -1,5 +1,6 @@
 import type { ZodType } from "zod";
 import { createProvider, type ChatMessage, type LLMProvider } from "./providers";
+import { recordEvent } from "../ops";
 
 /**
  * The ONLY place that talks to an LLM.
@@ -14,9 +15,47 @@ export const MODEL = () => process.env.LLM_MODEL || "qwen-plus";
 const TIMEOUT_MS = 45_000;
 const MAX_TOOL_ROUNDS = 3;
 
+/** A fixed code for a provider failure. Raw messages can echo request details, so they never
+ *  leave this file: callers, the UI and telemetry all see one of these codes. */
+export function aiErrorCode(e: unknown): string {
+  const status = (e as { status?: unknown })?.status;
+  const name = e instanceof Error ? e.name : "";
+  if (status === 401 || status === 403) return "provider_auth";
+  if (status === 429) return "rate_limited";
+  if (typeof status === "number" && status >= 500) return "provider_5xx";
+  if (name === "TimeoutError" || name === "AbortError" || /timed? ?out/i.test(String((e as Error)?.message))) return "timeout";
+  if (typeof status === "number") return `provider_${status}`;
+  return "provider_error";
+}
+
+/** Records every upstream call — outcome, latency, tokens — for the System Health dashboard.
+ *  Never the prompt or the answer. */
+function instrumented(p: LLMProvider): LLMProvider {
+  const timed = async <T>(name: string, run: () => Promise<T>, tokens: (r: T) => number | undefined) => {
+    const t0 = performance.now();
+    try {
+      const r = await run();
+      recordEvent({ kind: "ai", name, ok: true, ms: Math.round(performance.now() - t0), tokens: tokens(r) });
+      return r;
+    } catch (e) {
+      const status = (e as { status?: unknown })?.status;
+      recordEvent({
+        kind: "ai", name, ok: false, ms: Math.round(performance.now() - t0),
+        status: typeof status === "number" ? status : undefined, detail: aiErrorCode(e),
+      });
+      throw e;
+    }
+  };
+  return {
+    chat: (opts) => timed(`${opts.tools?.length ? "tools" : "chat"} · ${opts.model}`, () => p.chat(opts), (r) => r.tokens),
+    embed: (opts) => timed(`embed · ${opts.model}`, () => p.embed(opts), () => undefined),
+  };
+}
+
 function safeCreateProvider(): LLMProvider | null {
   try {
-    return createProvider();
+    const p = createProvider();
+    return p ? instrumented(p) : null;
   } catch {
     return null;
   }
@@ -108,7 +147,7 @@ export async function chatJSON<T>(args: {
     }
     return { ok: true, data: check.data };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "llm_error" };
+    return { ok: false, reason: aiErrorCode(e) };
   }
 }
 
@@ -183,6 +222,6 @@ export async function chatWithTools(args: {
     const answer = (final.content ?? "").trim();
     return answer ? { ok: true, data: { answer, used } } : { ok: false, reason: "empty_answer" };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "llm_error" };
+    return { ok: false, reason: aiErrorCode(e) };
   }
 }

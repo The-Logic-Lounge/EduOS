@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 import { aiEnabled, chatJSON } from "@/lib/ai/client";
 import { buildBatchContext } from "@/lib/ai/context/batch";
+import { route } from "@/lib/ops-route";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,7 @@ Vary question phrasing; avoid boilerplate. Every question must have an answer ke
 Marks per question should reflect difficulty (easy ≈ 2-3, medium ≈ 4-5, hard ≈ 6-8).
 Return maxScore as the sum of all marks. Never fabricate module names that are not in the context.`;
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   try {
     const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
     const parsed = In.safeParse(await req.json().catch(() => null));
@@ -118,3 +119,5 @@ export async function POST(req: Request) {
     return handleApiError(error);
   }
 }
+
+export const POST = route("/api/instructor/generate-assessment", POST_);

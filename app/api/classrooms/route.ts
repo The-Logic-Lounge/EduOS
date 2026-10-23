@@ -2,6 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireRole, orgWhere } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
+import { route } from "@/lib/ops-route";
 
 const ClassroomIn = z.object({
   name: z.string().trim().min(1).max(80),
@@ -10,12 +11,13 @@ const ClassroomIn = z.object({
   hasTech: z.boolean().default(true),
 });
 
-export async function GET() {
+async function GET_() {
   try {
     const user = await requireRole("MANAGEMENT");
     const classrooms = await db.classroom.findMany({
       where: orgWhere(user),
       orderBy: { name: "asc" },
+      take: 500,
       include: { _count: { select: { schedules: true } } },
     });
     return ok(classrooms);
@@ -24,7 +26,7 @@ export async function GET() {
   }
 }
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   try {
     const user = await requireRole("MANAGEMENT");
     const parsed = ClassroomIn.safeParse(await req.json().catch(() => null));
@@ -37,3 +39,6 @@ export async function POST(req: Request) {
     return handleApiError(error);
   }
 }
+
+export const GET = route("/api/classrooms", GET_);
+export const POST = route("/api/classrooms", POST_);

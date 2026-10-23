@@ -1,4 +1,6 @@
 import { db } from "./db";
+import { AuthError } from "./api";
+import type { SessionUser } from "./auth";
 import {
   coursePerformance,
   batchPerformanceMany,
@@ -12,6 +14,40 @@ import {
  * so a dashboard tile and its API response can never disagree.
  * Every performance number comes from lib/analytics.ts — nothing is recomputed here.
  */
+
+/** Gate for every course-mutating route: 404 if the course is not visible; an INSTRUCTOR may
+ *  only change a course they teach at least one batch of, or one with no batches yet (POST
+ *  /api/courses lets instructors create courses, and only MANAGEMENT assigns batches).
+ *  MANAGEMENT passes. */
+export async function canEditCourse(user: SessionUser, courseId: string): Promise<boolean> {
+  try {
+    await requireCourseEditor(user, courseId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function requireCourseEditor(user: SessionUser, courseId: string): Promise<void> {
+  const course = await db.course.findUnique({
+    where: { id: courseId },
+    select: { _count: { select: { batches: true } } },
+  });
+  if (!course) throw new AuthError("Course not found", 404);
+  if (user.role === "MANAGEMENT") return;
+  const teaches =
+    user.role === "INSTRUCTOR" && !!user.instructorId &&
+    (course._count.batches === 0 ||
+      (await db.batch.count({ where: { courseId, instructorId: user.instructorId } })) > 0);
+  if (!teaches) throw new AuthError("Forbidden", 403);
+}
+
+/** Batch filter for the per-batch course read models: an INSTRUCTOR sees only their own
+ *  batches (none without an instructor profile); MANAGEMENT sees every batch. */
+export function courseBatchScope(courseId: string, viewer: Pick<SessionUser, "role" | "instructorId">) {
+  if (viewer.role === "MANAGEMENT") return { courseId };
+  return { courseId, instructorId: viewer.instructorId ?? { in: [] as string[] } }; // `in: []` matches none
+}
 
 // ---------------------------------------------------------------- types
 
@@ -163,9 +199,9 @@ export async function getCourseDetail(courseId: string): Promise<CourseDetail | 
 }
 
 /** Students enrolled in any batch of this course, with per-batch performance and progress. */
-export async function getCourseStudents(courseId: string): Promise<CourseStudent[]> {
+export async function getCourseStudents(courseId: string, viewer: Pick<SessionUser, "role" | "instructorId">): Promise<CourseStudent[]> {
   const enrollments = await db.enrollment.findMany({
-    where: { batch: { courseId } },
+    where: { batch: courseBatchScope(courseId, viewer) },
     include: {
       student: { include: { user: { select: { name: true } } } },
       batch: { select: { id: true, code: true } },
@@ -207,9 +243,9 @@ export type CourseAssignment = {
   avgPct: number;
 };
 
-export async function getCourseAssignments(courseId: string): Promise<CourseAssignment[]> {
+export async function getCourseAssignments(courseId: string, viewer: Pick<SessionUser, "role" | "instructorId">): Promise<CourseAssignment[]> {
   const assignments = await db.assignment.findMany({
-    where: { batch: { courseId } },
+    where: { batch: courseBatchScope(courseId, viewer) },
     orderBy: { dueDate: "desc" },
     include: {
       batch: { select: { code: true } },
@@ -250,9 +286,9 @@ export type CourseAssessment = {
   avgPct: number;
 };
 
-export async function getCourseAssessments(courseId: string): Promise<CourseAssessment[]> {
+export async function getCourseAssessments(courseId: string, viewer: Pick<SessionUser, "role" | "instructorId">): Promise<CourseAssessment[]> {
   const assessments = await db.assessment.findMany({
-    where: { batch: { courseId } },
+    where: { batch: courseBatchScope(courseId, viewer) },
     orderBy: { scheduledAt: "desc" },
     include: {
       batch: { select: { code: true } },
@@ -289,14 +325,14 @@ export type CourseModuleProgress = {
   total: number;
 };
 
-export async function getCourseModuleProgress(courseId: string): Promise<CourseModuleProgress[]> {
+export async function getCourseModuleProgress(courseId: string, viewer: Pick<SessionUser, "role" | "instructorId">): Promise<CourseModuleProgress[]> {
   const modules = await db.module.findMany({
     where: { courseId },
     orderBy: { order: "asc" },
     select: { id: true, title: true, order: true },
   });
 
-  const batchIds = (await db.batch.findMany({ where: { courseId }, select: { id: true } })).map((b) => b.id);
+  const batchIds = (await db.batch.findMany({ where: courseBatchScope(courseId, viewer), select: { id: true } })).map((b) => b.id);
   if (batchIds.length === 0) {
     return modules.map((m) => ({ moduleId: m.id, title: m.title, order: m.order, completed: 0, inProgress: 0, notStarted: 0, total: 0 }));
   }

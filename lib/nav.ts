@@ -33,5 +33,8 @@ export const MANAGEMENT_NAV: NavItem[] = [
   { href: "/management/timetable", label: "Timetable" },
 ];
 
+/** Shown only to platform operators (lib/platform.ts), on top of MANAGEMENT_NAV. */
+export const SYSTEM_NAV: NavItem[] = [{ href: "/management/system", label: "System Health" }];
+
 export const navFor = (role: Role): NavItem[] =>
   role === "STUDENT" ? STUDENT_NAV : role === "INSTRUCTOR" ? INSTRUCTOR_NAV : MANAGEMENT_NAV;

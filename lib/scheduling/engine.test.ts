@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { detectConflicts, WORKING_HOURS } from "./engine";
+import { detectConflicts, WORKING_HOURS, TIME_RE } from "./engine";
 import type { ExistingSchedule, ClassroomInfo } from "./engine";
 import type { DayOfWeek } from "@prisma/client";
 
@@ -117,5 +117,12 @@ describe("detectConflicts", () => {
     const types = conflicts.map((c) => c.type);
     expect(types).toContain("instructor");
     expect(types).toContain("classroom");
+  });
+});
+
+describe("TIME_RE", () => {
+  it("accepts 24h HH:MM and rejects out-of-range or malformed times", () => {
+    for (const t of ["00:00", "09:30", "19:59", "23:59"]) expect(TIME_RE.test(t)).toBe(true);
+    for (const t of ["99:99", "24:00", "12:60", "9:30", "09:30:00", "", "ab:cd"]) expect(TIME_RE.test(t)).toBe(false);
   });
 });

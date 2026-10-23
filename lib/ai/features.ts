@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { currentOrgId } from "@/lib/tenant";
 import { moduleWeakness } from "@/lib/analytics";
 import { MODEL, aiEnabled, chatJSON, chatWithTools, extractJSON } from "./client";
 import { groundedAgainst } from "./guard";
@@ -28,8 +29,18 @@ export type Feature<T> = { source: "ai" | "fallback"; data: T; ungrounded?: numb
 
 const CACHE_MS = 30 * 60 * 1000;
 
-async function readCache<T>(kind: string, subjectType: string, subjectId: string, schema: z.ZodType<T, any, any>): Promise<T | null> {
+/** Tools that change data. Answers that used one are never cached. */
+const WRITE_TOOLS = new Set(["createSchedule"]);
+
+/** AiInsight has no tenant column, and "institute" answers share one subjectId per
+ *  question, so the org is part of every cache key. */
+async function cacheKey(subjectId: string) {
+  return `${(await currentOrgId()) ?? "system"}:${subjectId}`;
+}
+
+async function readCache<T>(kind: string, subjectType: string, rawSubjectId: string, schema: z.ZodType<T, any, any>): Promise<T | null> {
   try {
+    const subjectId = await cacheKey(rawSubjectId);
     const row = await db.aiInsight.findFirst({
       where: { kind, subjectType, subjectId, createdAt: { gte: new Date(Date.now() - CACHE_MS) } },
       orderBy: { createdAt: "desc" },
@@ -42,8 +53,9 @@ async function readCache<T>(kind: string, subjectType: string, subjectId: string
   }
 }
 
-async function writeCache(kind: string, subjectType: string, subjectId: string, payload: unknown) {
+async function writeCache(kind: string, subjectType: string, rawSubjectId: string, payload: unknown) {
   try {
+    const subjectId = await cacheKey(rawSubjectId);
     await db.aiInsight.create({
       data: {
         kind,
@@ -462,7 +474,7 @@ export async function copilotStudentAnalysis(
   const ctx = await buildBatchContext(batchId).catch(() => null);
   if (!ctx) return unavailable("no_batch");
 
-  const student = ctx.students.find((s) => s.rollNo === studentId || s.name.toLowerCase().includes(studentId.toLowerCase()));
+  const student = ctx.students.find((s) => s.rollNo === studentId);
   if (!student) return unavailable("student_not_found");
 
   const cacheId = `${batchId}:student:${studentId}`;
@@ -1074,7 +1086,9 @@ export async function askCommandCenter(question: string): Promise<Feature<Comman
     toolsUsed: res.data.used.map((u) => u.name),
   };
   const { ungrounded } = groundedAgainst(data.answer, results);
-  await writeCache("command-center", "institute", subjectId, data);
+  // An answer that wrote rows must never be replayed: a repeat "create a class" would return
+  // the cached "created" without writing anything.
+  if (!data.toolsUsed.some((t) => WRITE_TOOLS.has(t))) await writeCache("command-center", "institute", subjectId, data);
   return { source: "ai", data, ungrounded };
 }
 
@@ -1154,6 +1168,6 @@ export async function askSchedule(question: string): Promise<Feature<SchedulingA
     toolsUsed: res.data.used.map((u) => u.name),
   };
   const { ungrounded } = groundedAgainst(data.answer, results);
-  await writeCache("scheduling", "institute", subjectId, data);
+  if (!data.toolsUsed.some((t) => WRITE_TOOLS.has(t))) await writeCache("scheduling", "institute", subjectId, data);
   return { source: "ai", data, ungrounded };
 }

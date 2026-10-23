@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { ok, fail, handleApiError } from "@/lib/api";
+import { route } from "@/lib/ops-route";
 
 const ContactIn = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
@@ -9,7 +10,7 @@ const ContactIn = z.object({
   message: z.string().trim().min(1, "Message is required").max(4000),
 });
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   try {
     const body = await req.json().catch(() => null);
     const parsed = ContactIn.safeParse(body);
@@ -30,3 +31,5 @@ export async function POST(req: Request) {
     return handleApiError(error);
   }
 }
+
+export const POST = route("/api/contact", POST_);

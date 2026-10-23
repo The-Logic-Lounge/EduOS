@@ -50,7 +50,7 @@ function makeTools(studentId: string) {
     const [enrollments, sessions] = await Promise.all([
       db.enrollment.findMany({
         where: { studentId, status: "ACTIVE" },
-        select: { batch: { select: { code: true, name: true } } },
+        select: { batch: { select: { id: true, code: true, name: true } } },
       }),
       db.attendance.findMany({
         where: { studentId },
@@ -70,7 +70,7 @@ function makeTools(studentId: string) {
     }
 
     return enrollments.map((e) => {
-      const row = byBatch.get(e.batch.code) ?? { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
+      const row = byBatch.get(e.batch.id) ?? { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
       const rate = row.total > 0 ? Math.round(((row.present + row.late) / row.total) * 1000) / 10 : 0;
       return {
         batchCode: e.batch.code,
@@ -352,6 +352,7 @@ export async function runStudentTool(
   try {
     return await tool.run(input ?? {});
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "tool_failed" };
+    console.error("[student-tools]", name, e);
+    return { error: "tool_failed" };
   }
 }

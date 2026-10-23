@@ -323,6 +323,8 @@ async function scheduleOverview() {
   };
 }
 
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 async function createSchedule(input: {
   batchCode: string;
   day: string;
@@ -331,6 +333,9 @@ async function createSchedule(input: {
   classroomName: string;
   instructorName?: string;
 }) {
+  if (!TIME_RE.test(input.startTime ?? "") || !TIME_RE.test(input.endTime ?? "") || input.startTime >= input.endTime) {
+    return { error: "startTime and endTime must be HH:MM (24h) with startTime before endTime." };
+  }
   const batch = await db.batch.findFirst({
     where: { code: { equals: (input.batchCode ?? "").trim(), mode: "insensitive" } },
     select: {
@@ -723,7 +728,8 @@ export async function runTool(name: string, input: Record<string, unknown>): Pro
   try {
     return await tool.run(input ?? {});
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "tool_failed" };
+    console.error("[tools]", name, e);
+    return { error: "tool_failed" };
   }
 }
 

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requirePageRole } from "@/lib/page-auth";
+import { canEditCourse } from "@/lib/courses";
 import PageHeader from "@/components/ui/PageHeader";
 import CourseEditForm from "../CourseEditForm";
 
@@ -8,7 +9,9 @@ export const dynamic = "force-dynamic";
 
 export default async function CourseEditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  await requirePageRole("INSTRUCTOR", "MANAGEMENT");
+  const user = await requirePageRole("INSTRUCTOR", "MANAGEMENT");
+  // Same rule the save endpoints enforce, so the form is never offered when saving would 403.
+  if (!(await canEditCourse(user, id))) notFound();
 
   const course = await db.course.findUnique({
     where: { id },

@@ -32,6 +32,11 @@ export async function searchKnowledge(opts: SearchOpts): Promise<{
   }
   const { courseId, query, k } = parsed.data;
 
+  // The vector path is raw SQL, which the tenant extension cannot see: confirm through
+  // the scoped client that this course belongs to the caller's org before searching it.
+  const visible = await db.course.findFirst({ where: { id: courseId }, select: { id: true } });
+  if (!visible) return { ok: false, mode: "empty", chunks: [], reason: "not_found" };
+
   if (embeddingsEnabled()) {
     const vectors = await embed([query]);
     if (vectors && vectors[0]) {
@@ -51,15 +56,16 @@ export async function searchKnowledge(opts: SearchOpts): Promise<{
            JOIN "KnowledgeDocument" kd ON kd.id = kc."documentId"
            JOIN "KnowledgeSource" ks ON ks.id = kd."sourceId"
            JOIN "Course" c ON c.id = ks."courseId"
-           WHERE ks."courseId" = $2
+           WHERE ks."courseId" = $2 AND kc.embedding IS NOT NULL
            ORDER BY kc.embedding <=> $1::vector
            LIMIT $3;`,
           lit,
           courseId,
           k,
         );
-        if (rows.length === 0) return { ok: true, mode: "empty", chunks: [] };
-        return {
+        // No embedded chunks for this course (ingested while embeddings were off): fall
+        // through to text search rather than answering "nothing found".
+        if (rows.length > 0) return {
           ok: true,
           mode: "vector",
           chunks: rows.map((r) => ({

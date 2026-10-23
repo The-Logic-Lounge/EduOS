@@ -1,10 +1,11 @@
 import { requireRole } from "@/lib/auth";
 import { handleApiError, ok } from "@/lib/api";
 import { managementOverview } from "@/lib/management";
+import { route } from "@/lib/ops-route";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+async function GET_() {
   try {
     await requireRole("MANAGEMENT");
     return ok(await managementOverview());
@@ -12,3 +13,5 @@ export async function GET() {
     return handleApiError(error);
   }
 }
+
+export const GET = route("/api/management/overview", GET_);

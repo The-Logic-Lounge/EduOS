@@ -4,11 +4,12 @@ import { requireRole, requireUser } from "@/lib/auth";
 import { AuthError, ok, fail, handleApiError } from "@/lib/api";
 import { batchPerformance, studentBatchPerformance, moduleWeakness } from "@/lib/analytics";
 import { BatchUpdate, zodMessage } from "@/lib/schemas/batch";
+import { route } from "@/lib/ops-route";
 
 export const dynamic = "force-dynamic";
 
 /** GET /api/batches/[id] — batch detail scoped by role. */
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function GET_(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser();
     const { id } = await params;
@@ -73,7 +74,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 /** PATCH /api/batches/[id] — update batch metadata. */
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function PATCH_(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireRole("MANAGEMENT");
     const { id } = await params;
@@ -110,7 +111,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 /** DELETE /api/batches/[id] — delete a batch and its enrollments. */
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function DELETE_(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireRole("MANAGEMENT");
     const { id } = await params;
@@ -120,6 +121,11 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
       select: { id: true, _count: { select: { enrollments: true } } },
     });
     if (!existing) return fail("Batch not found", 404);
+    // Same rule the UI shows (BatchActions disables Delete when enrolled > 0), enforced here:
+    // the FK cascade would otherwise wipe every enrollment, attendance row, result and schedule.
+    if (existing._count.enrollments > 0) {
+      return fail("This batch has enrolled students. Remove its enrollments before deleting it.", 409);
+    }
 
     await db.batch.delete({ where: { id } });
     return ok({ id, deleted: true });
@@ -127,3 +133,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     return handleApiError(error);
   }
 }
+
+export const GET = route("/api/batches/[id]", GET_);
+export const PATCH = route("/api/batches/[id]", PATCH_);
+export const DELETE = route("/api/batches/[id]", DELETE_);

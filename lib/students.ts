@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
-import { db } from "./db";
+import { db, type DbTx } from "./db";
+import { currentOrgId } from "./tenant";
 import { requireUser, type SessionUser } from "./auth";
 import { AuthError } from "./api";
 import { studentOverallPerformance, studentBatchPerformanceMany, studentOverallPerformanceMany, type Perf } from "./analytics";
@@ -20,11 +21,15 @@ const pct = (num: number, den: number) => (den > 0 ? round1((num / den) * 100) :
 // ---------------------------------------------------------------- authorization
 
 /**
- * MANAGEMENT sees everyone. An INSTRUCTOR sees only a student enrolled in a batch
- * they teach. A STUDENT sees only themselves. Everything else is 403.
+ * MANAGEMENT sees everyone in their institute. An INSTRUCTOR sees only a student enrolled
+ * in a batch they teach. A STUDENT sees only themselves. Everything else is 403.
+ * A student outside the caller's institute is 404 — the tenant-scoped lookup cannot see
+ * it, and the answer must not confirm that another institute's id exists.
  */
 export async function requireStudentAccess(studentId: string): Promise<SessionUser> {
   const user = await requireUser();
+  const exists = await db.student.findUnique({ where: { id: studentId }, select: { id: true } });
+  if (!exists) throw new AuthError("Not found", 404);
   if (user.role === "MANAGEMENT") return user;
 
   if (user.role === "STUDENT") {
@@ -153,9 +158,21 @@ export async function batchOptions(orgId?: string) {
   }));
 }
 
-/** Next free roll number in the BQ-<year>-NNNN series. Zero-padded, so desc order is max. */
+/** The institute's roll-number code: continue its existing series (BQ, AKF, ...) or, for an
+ *  institute with no students yet, derive one from its slug. Roll numbers are unique across
+ *  ALL institutes, so a hard-coded "BQ" made every other institute collide with Bano Qabil. */
+async function rollCode(): Promise<string> {
+  const latest = await db.student.findFirst({ orderBy: { joinedAt: "desc" }, select: { rollNo: true } });
+  const existing = latest?.rollNo.match(/^([A-Z0-9]+)-\d{4}-\d+$/)?.[1];
+  if (existing) return existing;
+  const orgId = await currentOrgId();
+  const org = orgId ? await db.organization.findUnique({ where: { id: orgId }, select: { slug: true, name: true } }) : null;
+  return (org?.slug ?? org?.name ?? "EDU").replace(/[^a-z0-9]/gi, "").slice(0, 4).toUpperCase() || "EDU";
+}
+
+/** Next free roll number in the <CODE>-<year>-NNNN series. Zero-padded, so desc order is max. */
 export async function nextRollNo(): Promise<string> {
-  const prefix = `BQ-${new Date().getFullYear()}-`;
+  const prefix = `${await rollCode()}-${new Date().getFullYear()}-`;
   const last = await db.student.findFirst({
     where: { rollNo: { startsWith: prefix } },
     orderBy: { rollNo: "desc" },
@@ -172,7 +189,7 @@ export async function nextRollNo(): Promise<string> {
  * are MISSING, and module progress starts at NOT_STARTED.
  */
 export async function backfillEnrollment(
-  tx: Omit<Prisma.TransactionClient, "$transaction">,
+  tx: DbTx,
   enrollmentId: string,
   studentId: string,
   batchId: string,

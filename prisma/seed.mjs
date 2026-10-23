@@ -285,7 +285,20 @@ const round1 = (n) => Math.round(n * 10) / 10;
 const pct = (num, den) => (den > 0 ? round1((num / den) * 100) : 0);
 
 // ---------------------------------------------------------------- insert helper
+// ---------------------------------------------------------------- tenants
+// Two institutes so tenant isolation is demonstrable, not theoretical. Every root row
+// (user, student, instructor, course, batch, classroom) belongs to exactly one org.
+const ORG_BQ = "org_bq";
+const ORG_AKF = "org_akf";
+const ORGS = [
+  { id: ORG_BQ, name: "Bano Qabil — Karachi", slug: "bano-qabil" },
+  { id: ORG_AKF, name: "Alkhidmat Skills Centre — Lahore", slug: "alkhidmat-lahore" },
+];
+const ROOT_MODELS = new Set(["user", "student", "instructor", "course", "batch", "classroom"]);
+
 async function insert(model, rows, label) {
+  // Root rows default to Bano Qabil; the second institute passes its org explicitly.
+  if (ROOT_MODELS.has(model)) rows = rows.map((r) => ({ organizationId: ORG_BQ, ...r }));
   for (let i = 0; i < rows.length; i += 1000) {
     await db[model].createMany({ data: rows.slice(i, i + 1000), skipDuplicates: true });
   }
@@ -294,6 +307,7 @@ async function insert(model, rows, label) {
 
 // ================================================================== main
 async function main() {
+  await insert("organization", ORGS, "organizations");
   const hash = await bcrypt.hash("password", 10); // hashed once — bcrypt is slow
 
   // ---------------- skills
@@ -669,10 +683,87 @@ async function main() {
   }
   await insert("studentSkill", studentSkillRows, "student skills (derived from assessment evidence)");
 
+  await seedSecondInstitute(hash);
+
+  // Databases seeded before tenancy have null-org root rows: they are all Bano Qabil's.
+  for (const m of ROOT_MODELS) {
+    const { count } = await db[m].updateMany({ where: { organizationId: null }, data: { organizationId: ORG_BQ } });
+    if (count) console.log(`✓ backfilled ${count} ${m} rows → ${ORG_BQ}`);
+  }
+
   console.log("\nDemo logins (password: password)");
   console.log("  student@eduos.pk     Ali Hassan — star student, batch PY-12 (Python Programming)");
   console.log("  instructor@eduos.pk  Sir Kamran Aziz — teaches PY-12");
   console.log("  admin@eduos.pk       Dr. Shahid Mehmood — management");
+  console.log("  admin@alkhidmat.pk   Ayesha Siddiqui — management, Alkhidmat (second tenant)");
+}
+
+// ================================================================== second tenant
+// A small but complete institute: course → modules → batch → sessions → enrollments →
+// attendance, results and progress, so every consistency invariant holds for it too.
+async function seedSecondInstitute(hash) {
+  const o = ORG_AKF;
+  await insert("user", [
+    { id: "usr_akf_mgmt", email: "admin@alkhidmat.pk", passwordHash: hash, name: "Ayesha Siddiqui", role: "MANAGEMENT", organizationId: o },
+    { id: "usr_akf_ins", email: "instructor@alkhidmat.pk", passwordHash: hash, name: "Sir Bilal Ahmed", role: "INSTRUCTOR", organizationId: o },
+    ...Array.from({ length: 6 }, (_, i) => ({
+      id: `usr_akf_stu_${i}`, email: `student${i + 1}@alkhidmat.pk`, passwordHash: hash,
+      name: nameFor(500 + i * 7), role: "STUDENT", organizationId: o,
+    })),
+  ], "second tenant users");
+  await insert("instructor", [{
+    id: "ins_akf_0", userId: "usr_akf_ins", employeeNo: "AKF-EMP-0001", specialization: "Computer & Web Basics",
+    bio: "Teaches Computer & Web Basics at Alkhidmat Skills Centre.", joinedAt: daysFromToday(-300), organizationId: o,
+  }], "second tenant instructor");
+  await insert("student", Array.from({ length: 6 }, (_, i) => ({
+    id: `stu_akf_${i}`, userId: `usr_akf_stu_${i}`, rollNo: `AKF-2026-${pad(i + 1, 4)}`,
+    phone: `+92 30${pad(1000000 + i * 4111, 7)}`, city: "Lahore", education: EDUCATION[i % EDUCATION.length],
+    joinedAt: daysFromToday(-60), organizationId: o,
+  })), "second tenant students");
+  await insert("course", [{
+    id: "crs_AKF", code: "AKF-CW", title: "Computer & Web Basics",
+    description: "Computer literacy, the web and a first HTML page.", level: "Beginner", durationWeeks: 8, organizationId: o,
+  }], "second tenant course");
+  const mods = ["Computer Fundamentals", "Internet & Email", "First Web Page"];
+  await insert("module", mods.map((title, i) => ({
+    id: `mod_AKF_${i + 1}`, courseId: "crs_AKF", order: i + 1, title,
+    description: `${title} — module ${i + 1} of ${mods.length}.`, durationHours: 6,
+  })), "second tenant modules");
+  await insert("classroom", [{ id: "cls_akf_0", name: "AKF Lab 1", building: "Alkhidmat Centre", capacity: 20, hasTech: true, organizationId: o }], "second tenant classroom");
+  await insert("batch", [{
+    id: "bat_AKF-01", code: "AKF-01", name: "Computer & Web Basics — Morning", courseId: "crs_AKF", instructorId: "ins_akf_0",
+    startDate: daysFromToday(-42), endDate: daysFromToday(14), schedule: "Mon & Wed, 10:00 AM–12:00 PM",
+    capacity: 20, status: "ACTIVE", organizationId: o,
+  }], "second tenant batch");
+  await insert("schedule", [
+    { id: "sch_AKF-01_0", batchId: "bat_AKF-01", instructorId: "ins_akf_0", classroomId: "cls_akf_0", day: "MONDAY", startTime: "10:00", endTime: "12:00" },
+    { id: "sch_AKF-01_1", batchId: "bat_AKF-01", instructorId: "ins_akf_0", classroomId: "cls_akf_0", day: "WEDNESDAY", startTime: "10:00", endTime: "12:00" },
+  ], "second tenant schedule");
+  const sessions = Array.from({ length: 6 }, (_, i) => ({
+    id: `ses_AKF_${i}`, batchId: "bat_AKF-01", moduleId: `mod_AKF_${Math.min(3, Math.floor(i / 2) + 1)}`,
+    date: daysFromToday(-40 + i * 7), topic: `Session ${i + 1}`,
+  }));
+  await insert("classSession", sessions, "second tenant sessions");
+  await insert("enrollment", Array.from({ length: 6 }, (_, i) => ({
+    id: `enr_akf_${i}`, studentId: `stu_akf_${i}`, batchId: "bat_AKF-01", enrolledAt: daysFromToday(-42), status: "ACTIVE",
+  })), "second tenant enrollments");
+  await insert("attendance", sessions.flatMap((ses, si) => Array.from({ length: 6 }, (_, i) => ({
+    id: `att_akf_${si}_${i}`, sessionId: ses.id, studentId: `stu_akf_${i}`,
+    status: (si + i) % 5 === 0 ? "ABSENT" : "PRESENT",
+  }))), "second tenant attendance");
+  await insert("assessment", [
+    { id: "asm_AKF_1", batchId: "bat_AKF-01", moduleId: "mod_AKF_1", title: "Fundamentals Quiz", type: "QUIZ", maxScore: 20, scheduledAt: daysFromToday(-28) },
+    { id: "asm_AKF_2", batchId: "bat_AKF-01", moduleId: "mod_AKF_2", title: "Internet Midterm", type: "MIDTERM", maxScore: 50, scheduledAt: daysFromToday(-14) },
+  ], "second tenant assessments");
+  await insert("assessmentResult", Array.from({ length: 6 }, (_, i) => [
+    { id: `res_akf_1_${i}`, assessmentId: "asm_AKF_1", studentId: `stu_akf_${i}`, score: 12 + i },
+    { id: `res_akf_2_${i}`, assessmentId: "asm_AKF_2", studentId: `stu_akf_${i}`, score: 28 + i * 3 },
+  ]).flat(), "second tenant results");
+  await insert("moduleProgress", Array.from({ length: 6 }, (_, i) => mods.map((_, m) => ({
+    id: `mp_akf_${i}_${m + 1}`, enrollmentId: `enr_akf_${i}`, moduleId: `mod_AKF_${m + 1}`,
+    status: m === 0 ? "COMPLETED" : m === 1 ? "IN_PROGRESS" : "NOT_STARTED",
+    completedAt: m === 0 ? daysFromToday(-28) : null,
+  }))).flat(), "second tenant module progress");
 }
 
 main()

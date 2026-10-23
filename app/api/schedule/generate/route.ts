@@ -2,13 +2,14 @@ import { z } from "zod";
 import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 import { generateSchedule, persistSchedule, deleteScheduleForBatches } from "@/lib/scheduling/engine";
+import { route } from "@/lib/ops-route";
 
 const GenerateIn = z.object({
   batchIds: z.array(z.string()).min(1).max(50),
   replace: z.boolean().default(false),
 });
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   try {
     await requireRole("MANAGEMENT");
     const parsed = GenerateIn.safeParse(await req.json().catch(() => null));
@@ -30,3 +31,5 @@ export async function POST(req: Request) {
     return handleApiError(error);
   }
 }
+
+export const POST = route("/api/schedule/generate", POST_);

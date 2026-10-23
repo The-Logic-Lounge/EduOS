@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireRole, orgWhere } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
+import { route } from "@/lib/ops-route";
 
 const ModuleIn = z.object({
   title: z.string().trim().min(1).max(160),
@@ -27,12 +28,13 @@ const CourseIn = z.object({
 });
 
 /** GET /api/courses — list all courses (returns catalogue). */
-export async function GET() {
+async function GET_() {
   try {
     const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
     const courses = await db.course.findMany({
       where: orgWhere(user),
       orderBy: { code: "asc" },
+      take: 500,
       include: {
         _count: { select: { modules: true, batches: true } },
         skills: { include: { skill: { select: { name: true } } } },
@@ -45,7 +47,7 @@ export async function GET() {
   }
 }
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   try {
     const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
 
@@ -88,3 +90,6 @@ export async function POST(req: Request) {
     return handleApiError(error);
   }
 }
+
+export const GET = route("/api/courses", GET_);
+export const POST = route("/api/courses", POST_);

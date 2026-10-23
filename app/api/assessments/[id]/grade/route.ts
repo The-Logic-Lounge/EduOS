@@ -2,6 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
+import { route } from "@/lib/ops-route";
 
 const GradeRecord = z.object({
   studentId: z.string().min(1),
@@ -12,7 +13,7 @@ const GradeIn = z.object({
   results: z.array(GradeRecord).min(1).max(200),
 });
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function PATCH_(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
     const { id } = await params;
@@ -55,3 +56,5 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return handleApiError(error);
   }
 }
+
+export const PATCH = route("/api/assessments/[id]/grade", PATCH_);

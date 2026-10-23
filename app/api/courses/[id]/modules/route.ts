@@ -2,6 +2,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
+import { requireCourseEditor } from "@/lib/courses";
+import { route } from "@/lib/ops-route";
 
 const ModuleIn = z.object({
   title: z.string().trim().min(1).max(160),
@@ -19,13 +21,11 @@ const ModuleUpdateSchema = z.object({
 });
 
 /** POST /api/courses/[id]/modules — add a new module to a course. */
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function POST_(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireRole("MANAGEMENT", "INSTRUCTOR");
+    const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
     const { id: courseId } = await params;
-
-    const course = await db.course.findUnique({ where: { id: courseId }, select: { id: true } });
-    if (!course) return fail("Course not found", 404);
+    await requireCourseEditor(user, courseId);
 
     const parsed = ModuleIn.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
@@ -51,10 +51,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 }
 
 /** PUT /api/courses/[id]/modules?moduleId=xxx — update a module. */
-export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function PUT_(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireRole("MANAGEMENT", "INSTRUCTOR");
+    const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
     const { id: courseId } = await params;
+    await requireCourseEditor(user, courseId);
     const moduleId = new URL(req.url).searchParams.get("moduleId");
     if (!moduleId) return fail("moduleId query parameter is required", 400);
 
@@ -79,10 +80,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 }
 
 /** DELETE /api/courses/[id]/modules?moduleId=xxx — remove a module. */
-export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function DELETE_(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireRole("MANAGEMENT", "INSTRUCTOR");
+    const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
     const { id: courseId } = await params;
+    await requireCourseEditor(user, courseId);
     const moduleId = new URL(req.url).searchParams.get("moduleId");
     if (!moduleId) return fail("moduleId query parameter is required", 400);
 
@@ -106,3 +108,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     return handleApiError(error);
   }
 }
+
+export const POST = route("/api/courses/[id]/modules", POST_);
+export const PUT = route("/api/courses/[id]/modules", PUT_);
+export const DELETE = route("/api/courses/[id]/modules", DELETE_);

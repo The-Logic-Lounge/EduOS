@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 import { notifyBatch } from "@/lib/notifications";
+import { route } from "@/lib/ops-route";
 
 const AssignmentIn = z.object({
   batchId: z.string().min(1),
@@ -13,7 +14,7 @@ const AssignmentIn = z.object({
   dueDate: z.string().datetime(),
 });
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   try {
     const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
     const parsed = AssignmentIn.safeParse(await req.json().catch(() => null));
@@ -79,3 +80,5 @@ export async function POST(req: Request) {
     return handleApiError(error);
   }
 }
+
+export const POST = route("/api/assignments", POST_);

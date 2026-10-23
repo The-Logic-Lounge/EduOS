@@ -25,6 +25,8 @@ export type ChatOptions = {
 export type ChatResponse = {
   content: string | null;
   tool_calls?: ToolCall[];
+  /** Total tokens the provider reports for this call, when it reports any. */
+  tokens?: number;
 };
 
 export type EmbedOptions = {
@@ -68,6 +70,7 @@ export class OpenAIProvider implements LLMProvider {
     return {
       content: msg?.content ?? null,
       tool_calls: (msg?.tool_calls as ToolCall[] | undefined) ?? undefined,
+      tokens: res.usage?.total_tokens,
     };
   }
 

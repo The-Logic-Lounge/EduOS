@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 import { ingestUrl } from "@/lib/rag/ingest";
+import { route } from "@/lib/ops-route";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ const In = z.object({
   selector: z.string().trim().max(500).optional().nullable(),
 });
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   try {
     const user = await requireRole("MANAGEMENT");
     const parsed = In.safeParse(await req.json().catch(() => null));
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
   }
 }
 
-export async function GET() {
+async function GET_() {
   try {
     await requireRole("MANAGEMENT", "INSTRUCTOR");
     const rows = await db.knowledgeSource.findMany({
@@ -52,8 +53,12 @@ export async function GET() {
         _count: { select: { documents: true } },
       },
     });
-    return ok(rows);
+    // Older rows stored raw fetch errors; only short codes ever reach the client.
+    return ok(rows.map((r) => ({ ...r, error: r.error && (/^[a-z_]+(: [a-z0-9_]+)?$/.test(r.error) ? r.error : "fetch_failed") })));
   } catch (error) {
     return handleApiError(error);
   }
 }
+
+export const POST = route("/api/knowledge/ingest", POST_);
+export const GET = route("/api/knowledge/ingest", GET_);

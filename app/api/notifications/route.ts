@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
 import { notifyMany } from "@/lib/notifications";
+import { isInAppPath } from "@/lib/safe-link";
+import { route } from "@/lib/ops-route";
 
 const ListQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(30),
@@ -13,7 +15,7 @@ const ListQuery = z.object({
     .transform((v) => v === "1" || v === "true"),
 });
 
-export async function GET(req: Request) {
+async function GET_(req: Request) {
   try {
     const user = await requireRole("STUDENT", "INSTRUCTOR", "MANAGEMENT");
     const url = new URL(req.url);
@@ -68,10 +70,10 @@ const Broadcast = z.object({
   type: z
     .enum(["info", "assessment", "assignment", "schedule", "attendance", "system"])
     .default("info"),
-  link: z.string().trim().max(500).optional(),
+  link: z.string().trim().max(300).refine(isInAppPath, "Must be an in-app path like /courses").optional(),
 });
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   try {
     await requireRole("MANAGEMENT");
     const parsed = Broadcast.safeParse(await req.json().catch(() => null));
@@ -112,3 +114,6 @@ export async function POST(req: Request) {
     return handleApiError(error);
   }
 }
+
+export const GET = route("/api/notifications", GET_);
+export const POST = route("/api/notifications", POST_);

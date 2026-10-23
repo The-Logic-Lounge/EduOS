@@ -1,7 +1,8 @@
 import { db } from "@/lib/db";
 import { ok, handleApiError } from "@/lib/api";
+import { route } from "@/lib/ops-route";
 
-export async function GET() {
+async function GET_() {
   try {
     const courses = await db.course.findMany({
       orderBy: { code: "asc" },
@@ -19,3 +20,5 @@ export async function GET() {
     return handleApiError(error);
   }
 }
+
+export const GET = route("/api/public/courses", GET_);

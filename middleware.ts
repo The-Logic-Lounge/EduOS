@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
+import { authSecret, SESSION_COOKIE } from "@/lib/session-secret";
 
 type Role = "MANAGEMENT" | "INSTRUCTOR" | "STUDENT";
 
-const secret = new TextEncoder().encode(process.env.AUTH_SECRET ?? "dev-secret");
 
 const homeFor: Record<Role, string> = {
   MANAGEMENT: "/management",
@@ -24,17 +24,17 @@ export async function middleware(req: NextRequest) {
   // Public marketing homepage must be reachable without a session.
   if (pathname === "/") return NextResponse.next();
 
-  const token = req.cookies.get("eduos_session")?.value;
+  const token = req.cookies.get(SESSION_COOKIE)?.value;
   if (!token) return NextResponse.redirect(new URL("/login", req.url));
 
   let role: Role;
   try {
-    const { payload } = await jwtVerify(token, secret);
+    const { payload } = await jwtVerify(token, authSecret());
     role = payload.role as Role;
   } catch {
     // Expired or tampered token — clear cookie and redirect to login
     const res = NextResponse.redirect(new URL("/login", req.url));
-    res.cookies.delete("eduos_session");
+    res.cookies.delete(SESSION_COOKIE);
     return res;
   }
 

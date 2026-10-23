@@ -7,6 +7,9 @@ export const DAYS: DayOfWeek[] = [
 
 export const WORKING_HOURS = { start: "08:00", end: "18:00" };
 
+/** 24h "HH:MM" — every schedule route validates times with this. */
+export const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 const SLOT_DURATION_MIN = 90;
 const DEFAULT_SLOTS: { start: string; end: string }[] = [
   { start: "08:00", end: "09:30" },

@@ -4,6 +4,7 @@ import { ok, fail, handleApiError } from "@/lib/api";
 import { aiEnabled, chatWithTools } from "@/lib/ai/client";
 import { studentToolSpecs, runStudentTool, STUDENT_TOOL_NAMES } from "@/lib/ai/student-tools";
 import { buildStudentContext } from "@/lib/ai/context/student";
+import { route } from "@/lib/ops-route";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,8 @@ const ChatIn = z.object({
     .array(
       z.object({
         role: z.enum(["user", "assistant"]),
-        content: z.string(),
+        // Trim, don't reject: the client echoes back assistant replies, which can be long.
+        content: z.string().transform((s) => s.slice(0, 2000)),
       }),
     )
     .max(20)
@@ -42,7 +44,7 @@ exceptions work?"). When you use it, cite the topic name and URL from each
 retrieved chunk so the student can read the full page. If the chunks do not
 answer the question, say so and suggest asking the instructor.`;
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   try {
     const user = await requireRole("STUDENT");
     if (!user.studentId) return fail("Student profile not found.", 404);
@@ -117,3 +119,5 @@ export async function POST(req: Request) {
     return handleApiError(error);
   }
 }
+
+export const POST = route("/api/student/chat", POST_);

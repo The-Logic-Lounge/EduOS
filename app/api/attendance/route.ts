@@ -2,6 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { ok, fail, handleApiError } from "@/lib/api";
+import { route } from "@/lib/ops-route";
 
 const AttendanceRecord = z.object({
   studentId: z.string().min(1),
@@ -13,7 +14,7 @@ const AttendanceIn = z.object({
   records: z.array(AttendanceRecord).min(1).max(200),
 });
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   try {
     const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
     const parsed = AttendanceIn.safeParse(await req.json().catch(() => null));
@@ -58,3 +59,5 @@ export async function POST(req: Request) {
     return handleApiError(error);
   }
 }
+
+export const POST = route("/api/attendance", POST_);

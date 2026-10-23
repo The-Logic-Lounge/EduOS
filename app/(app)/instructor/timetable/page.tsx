@@ -8,10 +8,9 @@ export const dynamic = "force-dynamic";
 
 export default async function InstructorTimetable() {
   const user = await requirePageRole("INSTRUCTOR");
-  const instructorId = user.instructorId!;
-
+  // No instructor profile → nothing. An undefined filter would match every schedule.
   const schedules = await db.schedule.findMany({
-    where: { instructorId },
+    where: { instructorId: user.instructorId ?? { in: [] } },
     include: {
       batch: { select: { code: true, name: true, course: { select: { title: true } } } },
       classroom: { select: { name: true, building: true } },

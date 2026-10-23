@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
-import { ok, fail, handleApiError } from "@/lib/api";
+import { AuthError, ok, fail, handleApiError } from "@/lib/api";
+import { route } from "@/lib/ops-route";
 
 const AssignmentUpdate = z.object({
   title: z.string().trim().min(1).max(200).optional(),
@@ -11,14 +12,15 @@ const AssignmentUpdate = z.object({
   moduleId: z.string().min(1).nullable().optional(),
 });
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function GET_(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireRole("MANAGEMENT", "INSTRUCTOR");
+    const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
     const { id } = await params;
 
     const assignment = await db.assignment.findUnique({
       where: { id },
       include: {
+        batch: { select: { instructorId: true } },
         module: { select: { id: true, title: true } },
         submissions: {
           include: { student: { select: { id: true, rollNo: true, user: { select: { name: true } } } } },
@@ -27,13 +29,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       },
     });
     if (!assignment) return fail("Assignment not found", 404);
+    if (user.role === "INSTRUCTOR" && assignment.batch.instructorId !== user.instructorId) {
+      throw new AuthError("Forbidden", 403);
+    }
     return ok(assignment);
   } catch (error) {
     return handleApiError(error);
   }
 }
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function PATCH_(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
     const { id } = await params;
@@ -67,7 +72,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 }
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function DELETE_(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireRole("MANAGEMENT", "INSTRUCTOR");
     const { id } = await params;
@@ -88,3 +93,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     return handleApiError(error);
   }
 }
+
+export const GET = route("/api/assignments/[id]", GET_);
+export const PATCH = route("/api/assignments/[id]", PATCH_);
+export const DELETE = route("/api/assignments/[id]", DELETE_);

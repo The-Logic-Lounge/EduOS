@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { isInAppPath } from "@/lib/safe-link";
 
 type Notification = {
   id: string;
@@ -190,11 +191,12 @@ export function NotificationBell() {
               </div>
             )}
             {items.map((n) => {
-              const Wrapper = n.link ? Link : "div";
+              const href = n.link && isInAppPath(n.link) ? n.link : null;
+              const Wrapper = href ? Link : "div";
               return (
                 <Wrapper
                   key={n.id}
-                  href={n.link ?? "#"}
+                  href={href ?? "#"}
                   onClick={() => {
                     if (!n.read) markRead(n.id);
                   }}

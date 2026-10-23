@@ -1,9 +1,10 @@
 import { ok, handleApiError } from "@/lib/api";
 import { requireStudentAccess, studentCourses } from "@/lib/students";
+import { route } from "@/lib/ops-route";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function GET_(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     await requireStudentAccess(id);
@@ -12,3 +13,5 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return handleApiError(error);
   }
 }
+
+export const GET = route("/api/students/[id]/courses", GET_);
