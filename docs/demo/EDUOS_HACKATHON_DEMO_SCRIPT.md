@@ -1,91 +1,106 @@
-# EDUOS — Grand Finale Demo Script (6 minutes)
+# EDUOS — Grand Finale Stage Script · Project **P00733**
 
-**Rule for the whole demo:** one institute, one story, one student. Never a feature tour.
-Every number on screen is computed from the database by `lib/analytics.ts`; the AI only
-explains numbers it was handed. Say that once, early, and let the screens prove it.
+**6 minutes, one concept, three people.** We follow one gap, *"Choose the right data
+structure"*, from a paper answer sheet to a verified skill to a first paid gig. Every section
+is labelled with the rubric question it answers. Q&A answers: `docs/demo/JUDGE_QA.md`.
 
-Logins (password `password`): `student@eduos.pk` · `instructor@eduos.pk` · `admin@eduos.pk`
-(Bano Qabil) and `admin@alkhidmat.pk` (second institute, used once to prove isolation).
+**Roles on stage**
+- **Basim**: drives the laptop.
+- **Shan**: narrates. He is a Bano Qabil trainer, so the problem is his own (Q1).
+- **Muneeb**: architecture, cost and hosting questions (Q6, Q9).
 
-Open these tabs before going on stage, each already signed in, so no typing happens live:
-1. Student — Ali Hassan · 2. Instructor — Sir Kamran · 3. Management — Dr. Shahid
-4. Alkhidmat admin (private window) · 5. Management → **System Health**
+**Tabs open before you walk on.** Each is already signed in on **eduos.vercel.app**, and you
+should click through each one in the last 5 minutes so nothing is cold:
+1. Trainer, `instructor@eduos.pk` → `/instructor/gaps`, batch PY-12
+2. Student, `student@eduos.pk` → `/student/gaps`
+3. Management, `admin@eduos.pk` → `/management/gaps`
+4. System Health → `/management/system`, window **1h**
+5. A phone with the camera ready, plus the **handwritten answer sheet** (PY-12 Mid-Term)
 
 ---
 
-## 0:00 — The problem (30 s, no screen)
+## 0:00 — Problem and who (Q1, Q8) · Shan, no screen · 40 s
 
-> "Free IT training institutes like Bano Qabil train thousands of students a year with a
-> handful of staff. Attendance lives in one sheet, marks in another, and nobody can answer
-> *which students are ready for a job, and which instructor needs help* until the batch is
-> over. EDUOS is the operating system that answers it while the batch is still running."
+> "Assalam-o-Alaikum. We are team P00733, and this is EDUOS.
+> I'm a trainer at Bano Qabil. Bano Qabil has 1.6 million registered learners in 70 cities.
+> My batch has close to 100 students, and their tests come back to me **on paper**.
+> When I mark them, I get a total: 31 out of 50. That number doesn't tell me *which concept*
+> each student is missing. So I re-teach everything, or nothing.
+> Then my students graduate with a free certificate that employers don't trust. In Pakistan,
+> only 10 to 12 percent of IT graduates are job-ready on day one.
+> EDUOS fixes the whole chain: **find the gap, fix it, prove it, earn from it.**"
 
-## 0:30 — Student: evidence, not opinions (75 s) · tab 1
+## 0:40 — Trainer: paper to gaps (Q2, Q3, Q4, Q5) · tab 1 + phone · 90 s
 
-- **Dashboard**: Ali's attendance, assessment and assignment percentages. *"All computed,
-  none typed in."*
-- **Skill Passport**: skills with levels, each backed by an evidence count. *"The level
-  comes from his assessment results. Qwen writes the summary, but it can only cite these
-  numbers. If it makes up a figure, the guard rejects the answer and we show the computed
-  version."*
-- **Ask Edu OS** (student chat): ask *"How is my attendance in Python and what should I
-  revise?"* The answer cites his real attendance and pulls course material through RAG.
-  *"Every tool is bound to Ali's own session. He can't ask about another student,
-  because no tool accepts a student id."*
+1. Hold up the paper sheet. *"This is a real answer sheet, handwritten."*
+2. Gap Finder → **Scan answer sheets** → pick *Mid-Term Exam* and **Ali Hassan** (the name on the sheet) → photograph it.
+   *(Continuity: Ali is the student account in tab 2. Before the scan he has **zero gaps**; the
+   gaps you're about to create are the ones the student tab will show next.)*
+   > "The photo is shrunk on the phone before upload, because our trainers are on mobile data.
+   > **qwen3-vl-plus** on Alibaba Model Studio reads the handwriting and marks each answer against our key."
+3. The review screen opens. Point at Q2's transcription: *"I will use a list and loop over it."*
+   > "It gave zero, and look at the reason: a set gives instant lookup, a list doesn't.
+   > I'm the trainer, so I confirm or change any mark. **The AI never grades alone.**"
+4. **Confirm**, then point at the re-teach groups:
+   > "Now I don't see 31 out of 50. I see the **N students** who share the gap 'Choose the right
+   > structure for a task'. That's my re-teach group for Monday."
 
-## 1:45 — Instructor: the copilot (60 s) · tab 2
+*(Q5 line, if asked: "Reading handwriting and judging a free-text answer can't be done with rules. That's
+why we use a vision model.")*
 
-- **My Batches → PY-12**: module weakness and the students who need attention.
-- **AI Copilot**: *"Which module should I re-teach this week?"* Grounded in PY-12's data only.
-- One line on safety: *"If Sir Kamran asks about a batch he doesn't teach, he gets a 403.
-  We test that in an automated suite on every change."*
+## 2:10 — Student: gap, practice, viva (Q2, Q3, Q5, Q7) · tab 2 · 100 s
 
-## 2:45 — Management: the Command Center (60 s) · tab 3
+1. *My Gaps* → the same concept, with **their own answer** as evidence.
+2. **Practice this** → flip to **اردو**:
+   > "**Qwen-MT** puts the explanation in Urdu, and keeps *Python, set, list* in English,
+   > because that's how we actually teach."
+3. **Prove it: take the viva** → answer one question live (have a judge suggest the answer if the mood is right).
+   > "Qwen questions the student on **their own** past answers. If the answer is vague, it asks a
+   > sharper follow-up, up to 4 questions. A pass stamps the Skill Passport **Verified**. Pasting
+   > is flagged, because free certificates only matter if they can't be faked."
+4. Show the Passport → **Verified ✓** badge → the **public verification link** an employer can open.
 
-- **Dashboard**: course and batch performance, skill gaps across the institute.
-- **Ask Edu OS**: *"Which batch is struggling most, and who teaches it?"* Then show the
-  answer's tool trail. *"No text-to-SQL. The model can only call nine allowlisted
-  analytics functions, so it can't invent a query or a statistic."*
+## 3:50 — Student: first earning (Q1, Q8) · tab 2 · 40 s
 
-## 3:45 — Multi-tenant, proven live (40 s) · tab 4
+*First Earning* → top gig matches with readiness % (verified skills count more) → pick one →
+a Fiverr gig description written **only from the student's real evidence**, with the
+**grounded** badge, plus a 14-day plan.
+> "Bano Qabil's goal isn't a certificate. It's a student who earns. This is the step from verified
+> skill to first order. The prices are reference ranges, and we label them that way."
 
-- Switch to the **Alkhidmat** admin. Students list: six Lahore students, none of Bano
-  Qabil's 240.
-- Paste a Bano Qabil student URL (`/management/students/stu_000`): **Not found**.
-  *"Isolation isn't a filter on each screen. Every database query in the app goes through
-  one tenant-scoped client, including the AI tools and the analytics. A new screen can't
-  forget it."*
+## 4:30 — Management: the institute view (Q7, Q8, Q9) · tabs 3 + 4 · 60 s
 
-## 4:25 — It's measurable: System Health (60 s) · tab 5
+1. **Gap Map**: courses × concepts across every batch.
+   > "The director sees the same gap institute-wide, and which course needs a better module."
+2. **System Health** (window 1h):
+   > "Every AI call you just saw is here, with its latency and tokens. Marking one answer sheet costs about
+   > **Rs 0.23**; a student chat about **Rs 0.5**. That's not a guess, it's measured."
+3. One line on scale: *"Each institute is a tenant with isolated data. That's already live and tested with two.
+   It's ready for Alkhidmat's 99 skills centres and the new Alibaba Cloud training centres in Karachi and Lahore."*
 
-- **Health strip**: database, pgvector, AI provider, telemetry, each with an honest state.
-  Background jobs say *Not instrumented*. *"We'd rather show Unknown than fake a green
-  light."*
-- **Latency**: p50/p95/p99 from real requests, the slowest endpoints, and DB queries per
-  request.
-- **The before/after**: *"Production ran its functions in Washington against a database in
-  Singapore, so every query crossed the Pacific. Pinning the region took the warm public
-  API from 1.8 seconds to under 0.2, and our full end-to-end test run from six and a half
-  minutes to under fifty seconds."* (Measured 2026-10-23: 1.83 s → 179 ms; 380.7 s → 48.5 s.)
-- **Access denied** counter: the cross-tenant attempt from the last step shows up here.
+## 5:30 — Close: honesty and ask (Q10) · Basim · 30 s
 
-## 5:25 — Close (35 s)
-
-> "People, learning and operations in one system, with AI that explains real numbers
-> instead of inventing them, isolated per institute, and measured in production. It's
-> built on Alibaba Cloud's Qwen through Model Studio. EDUOS is ready for the next
-> institute tomorrow."
+> "What's built: everything you just saw, live, with 140+ automated tests and isolation and security
+> suites. What's planned: moving hosting onto Alibaba Cloud (the AI already runs on Model Studio),
+> and Urdu speech, which Alibaba's speech models don't list yet, so we didn't fake it.
+> EDUOS: find the gap, fix it, prove it, earn from it. Thank you. We're **P00733**."
 
 ---
 
 ## If something fails on stage
 
-| Failure | What the audience sees | What you say / do |
-|---|---|---|
-| Qwen unreachable or key invalid | Every AI panel shows its **computed fallback**, labelled as such | *"This is the fallback path working: the model is unreachable, so EDUOS shows the computed analysis instead of a fabricated one."* Then open System Health, where AI provider shows **Degraded/Unavailable**. That proves the monitoring is real. |
-| Venue Wi-Fi down | Nothing loads | Switch to phone hotspot. If still down, show the **recorded walkthrough** and say it is a recording. Never pass off a recording as live. |
-| Database cold start (first request slow) | One slow page | Warm every tab 5 minutes before going on stage. |
-| An API call fails | The page's error state | Open System Health → Recent errors: the failed request is listed with its route and correlation id, which is also in the response's `x-correlation-id` header. That turns the failure into a demo of the observability. (Page render errors are not yet in telemetry, so don't promise that.) |
+| Failure | What you do |
+|---|---|
+| Scan is slow (> 15 s) | Keep talking through Q5's line. It usually lands in 7–10 s. |
+| Scan fails or AI is down | The same review screen opens empty: "the trainer types the marks, and the flow still completes". Then show System Health recording the failure. |
+| Viva can't reach Qwen | It completes as **"provisional, needs trainer review"** and does NOT stamp Verified. Say exactly that. It's the honesty feature. |
+| Wi-Fi down | Phone hotspot. If that's down too, play the recorded walkthrough and **say it is a recording**. |
+| First page is slow | Supabase cold start. Warm every tab 5 minutes before. |
 
-**Pre-flight (T-30 min):** run `node scripts/smoke.mjs https://eduos.vercel.app` and confirm
-it prints PASS. Open System Health and confirm AI provider is not *Unavailable*. Warm all tabs.
+## Pre-flight (T-30 min)
+
+- [ ] `node scripts/prod-verify.mjs https://eduos.vercel.app` → PASS
+- [ ] System Health: AI provider **Healthy**, telemetry recent
+- [ ] Do one scan with the spare sheet. It also warms the vision model.
+- [ ] Two handwritten sheets: Q1 right; Q2 "use a list"; Q3 "same speed".
+- [ ] Phone charged, camera permission granted for the site

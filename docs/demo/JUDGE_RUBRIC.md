@@ -17,4 +17,4 @@ Each question is answered with one score from 1 to 5; comments are not scored.
 | 9 | What would it take to keep this running after the hackathon? | A realistic view of cost, data, upkeep or partners |
 | 10 | Clarity and honesty (judge's own assessment). | Clear presentation, **honest about built versus planned**, direct answers |
 
-Judges mark each team on a portal by project ID (format `P` + five digits). Know ours.
+Judges mark each team on a portal by project ID. **Ours: P00733** — on the first and last slide, and say it when you introduce the team.

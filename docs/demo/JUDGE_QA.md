@@ -1,4 +1,4 @@
-# Judge Q&A — one prepared answer per rubric question
+# Judge Q&A — one prepared answer per rubric question · Project **P00733**
 
 Rules for the whole team: **answer in two sentences, then stop**. If you don't know, say
 "we haven't measured that". Every number below has a source; don't round up.
