@@ -1,12 +1,14 @@
 import { z } from "zod";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Prisma } from "@prisma/client";
+import { authSecret } from "@/lib/session-secret";
 import { db } from "@/lib/db";
 import { currentOrgId } from "@/lib/tenant";
 import { AuthError } from "@/lib/api";
 import type { SessionUser } from "@/lib/auth";
 import { MODEL, VISION_MODEL, TRANSLATE_MODEL, chatJSON, translateToUrdu } from "@/lib/ai/client";
 import {
-  ScanAiSchema, clampDraft, emptyDraft, fallbackPractice, normaliseQuestions,
+  ScanAiSchema, clampDraft, handDraft, fallbackPractice, normaliseQuestions,
   type DraftRow, type PracticePack, type SheetQuestion,
 } from "./core";
 
@@ -66,6 +68,19 @@ Return JSON: {"answers":[{"questionId":"q1","answerText":"...","marks":0,"feedba
 
 export type ScanDraft = { source: "ai" | "fallback"; model: string | null; reason?: string; rows: DraftRow[] };
 
+/** HMAC over exactly what the model produced for one row. The browser cannot forge it, and it
+ *  stops verifying the moment anyone edits the row — so "graded by AI" is a server fact, never
+ *  a client claim. */
+type SealFields = { questionId: string; answerText: string; marks: number; feedback: string; confidence: number | null };
+const sealOf = (r: SealFields) =>
+  createHmac("sha256", authSecret()).update(JSON.stringify([r.questionId, r.answerText, r.marks, r.feedback, r.confidence])).digest("base64url").slice(0, 43);
+export const sealRow = <T extends SealFields>(r: T): T & { seal: string } => ({ ...r, seal: sealOf(r) });
+export function sealIntact(r: SealFields & { seal?: string }): boolean {
+  if (!r.seal) return false;
+  const a = Buffer.from(r.seal), b = Buffer.from(sealOf(r));
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 export async function readSheet(questions: SheetQuestion[], images: string[]): Promise<ScanDraft> {
   if (questions.length === 0) return { source: "fallback", model: null, reason: "no_questions", rows: [] };
   const key = questions.map((q) => ({ questionId: q.id, question: q.q, answerKey: q.a, max: q.marks, concept: q.concept }));
@@ -78,8 +93,8 @@ export async function readSheet(questions: SheetQuestion[], images: string[]): P
     temperature: 0,
     maxTokens: 2500,
   });
-  if (!res.ok) return { source: "fallback", model: null, reason: res.reason, rows: emptyDraft(questions) };
-  return { source: "ai", model: VISION_MODEL(), rows: clampDraft(res.data, questions) };
+  if (!res.ok) return { source: "fallback", model: null, reason: res.reason, rows: handDraft(questions) };
+  return { source: "ai", model: VISION_MODEL(), rows: clampDraft(res.data, questions).map(sealRow) };
 }
 
 // ------------------------------------------------------------------ practice for one gap

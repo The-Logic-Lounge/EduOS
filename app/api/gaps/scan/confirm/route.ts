@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { ok, fail, handleApiError } from "@/lib/api";
 import { recomputeStudentSkills } from "@/lib/analytics";
 import { ConfirmSchema, checkRows, resultScore } from "@/lib/gaps/core";
-import { scanTarget } from "@/lib/gaps/server";
+import { scanTarget, sealIntact } from "@/lib/gaps/server";
 import { route } from "@/lib/ops-route";
 
 export const dynamic = "force-dynamic";
@@ -39,8 +39,8 @@ async function POST_(req: Request) {
           skillId: q.skillId,
           feedback: r.feedback || null,
           source: "scan",
-          gradedBy: r.aiMarked && !r.edited ? "ai" : "trainer",
-          confidence: r.aiMarked ? r.confidence : null,
+          gradedBy: sealIntact(r) ? "ai" : "trainer",
+          confidence: sealIntact(r) ? r.confidence : null,
         };
         return db.assessmentResponse.upsert({
           where: { assessmentId_studentId_questionId: { assessmentId, studentId, questionId: r.questionId } },

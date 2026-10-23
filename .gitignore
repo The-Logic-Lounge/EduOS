@@ -11,3 +11,6 @@ next-env.d.ts
 # Claude session state — local only, not shared
 .claude/harness/
 .claude/auto-refine*
+
+# Claude agent worktrees (isolated copies)
+.claude/worktrees/

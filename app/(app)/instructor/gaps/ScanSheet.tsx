@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
-import { LOW_CONFIDENCE, emptyDraft, type DraftRow, type SheetQuestion } from "@/lib/gaps/core";
+import { LOW_CONFIDENCE, handDraft, type DraftRow, type SheetQuestion } from "@/lib/gaps/core";
 
 type Props = {
   assessments: { id: string; title: string; questions: SheetQuestion[] }[];
@@ -110,7 +110,7 @@ export default function ScanSheet({ assessments, students }: Props) {
       const rows = review.rows.map((r, i) => {
         const o = review.original[i];
         const edited = r.marks !== o.marks || r.feedback !== o.feedback || r.answerText !== o.answerText;
-        return { questionId: r.questionId, answerText: r.answerText, marks: r.marks, feedback: r.feedback, confidence: r.confidence, aiMarked: r.aiMarked, edited };
+        return { questionId: r.questionId, answerText: r.answerText, marks: r.marks, feedback: r.feedback, confidence: r.confidence, seal: edited ? undefined : r.seal };
       });
       const res = await fetch("/api/gaps/scan/confirm", {
         method: "POST",
@@ -212,7 +212,7 @@ export default function ScanSheet({ assessments, students }: Props) {
             <Button onClick={read} disabled={!photos.length || !!busy || !questions.length}>
               {busy === "reading" ? "Reading handwriting…" : busy === "resizing" ? "Resizing…" : "Read sheet with AI"}
             </Button>
-            <Button variant="secondary" onClick={() => { reset(); open("hand", emptyDraft(questions), null); }} disabled={!!busy || !questions.length}>
+            <Button variant="secondary" onClick={() => { reset(); open("hand", handDraft(questions), null); }} disabled={!!busy || !questions.length}>
               Mark by hand
             </Button>
           </div>

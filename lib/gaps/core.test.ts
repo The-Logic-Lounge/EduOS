@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  ScanAiSchema, checkImage, checkRows, clampDraft, clampMarks, emptyDraft, fallbackPractice,
+  ScanAiSchema, checkImage, checkRows, clampDraft, clampMarks, handDraft, fallbackPractice,
   masteryBand, normaliseQuestions, resultScore, shapeEvidence,
 } from "./core";
 
@@ -48,9 +48,9 @@ describe("clampDraft", () => {
   });
 });
 
-describe("emptyDraft (fallback)", () => {
+describe("handDraft (fallback)", () => {
   it("one hand-entry row per question, no confidence", () => {
-    expect(emptyDraft(KEY)).toEqual([
+    expect(handDraft(KEY)).toEqual([
       { questionId: "q1", answerText: "", marks: 0, maxMarks: 7, feedback: "", confidence: null },
       { questionId: "q2", answerText: "", marks: 0, maxMarks: 7, feedback: "", confidence: null },
       { questionId: "q3", answerText: "", marks: 0, maxMarks: 6, feedback: "", confidence: null },
@@ -60,7 +60,7 @@ describe("emptyDraft (fallback)", () => {
 
 describe("checkRows + resultScore (sum invariant)", () => {
   const row = (questionId: string, marks: number) =>
-    ({ questionId, marks, answerText: "", feedback: "", confidence: null, aiMarked: false, edited: false });
+    ({ questionId, marks, answerText: "", feedback: "", confidence: null });
   it("accepts a full, in-range sheet", () => {
     expect(checkRows([row("q1", 7), row("q2", 0), row("q3", 3)], KEY)).toBeNull();
   });
