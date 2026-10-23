@@ -26,7 +26,9 @@ export type SessionUser = {
 export async function createSession(user: SessionUser) {
   // jti identifies this one session so logout can revoke it; iat lets a password change
   // revoke every session minted before it.
-  const token = await new SignJWT({ ...user })
+  // iatMs: millisecond issue time, so a revocation written in the same second as the login
+  // still applies (JWT iat has 1 s resolution). Same clock as writeRevocation's `at`.
+  const token = await new SignJWT({ ...user, iatMs: Date.now() })
     .setProtectedHeader({ alg: "HS256" })
     .setJti(randomUUID())
     .setIssuedAt()
@@ -50,11 +52,17 @@ export const userRevocationKey = (userId: string) => hashKey(`user:${userId}`);
  *  A user-wide revocation kills tokens issued in an EARLIER second than it: iat has 1 s
  *  resolution, and a re-login right after a password change must survive.
  *  ponytail: a token minted <1 s before a password change survives it; use ms claims if that matters. */
-export function revocationWhere(p: { jti?: unknown; userId?: unknown; iat?: unknown }): Prisma.OpsEventWhereInput | null {
+export function revocationWhere(p: { jti?: unknown; userId?: unknown; iat?: unknown; iatMs?: unknown }): Prisma.OpsEventWhereInput | null {
   const or: Prisma.OpsEventWhereInput[] = [];
   if (typeof p.jti === "string" && p.jti) or.push({ name: LOGOUT, subject: hashKey(p.jti) });
-  if (typeof p.userId === "string" && p.userId && typeof p.iat === "number") {
-    or.push({ name: REVOKE_USER, subject: userRevocationKey(p.userId), at: { gte: new Date((p.iat + 1) * 1000) } });
+  if (typeof p.userId === "string" && p.userId) {
+    // Millisecond precision when the token carries it: anything issued strictly before the
+    // revocation dies, a login after it survives. Older tokens fall back to iat seconds.
+    if (typeof p.iatMs === "number") {
+      or.push({ name: REVOKE_USER, subject: userRevocationKey(p.userId), at: { gt: new Date(p.iatMs) } });
+    } else if (typeof p.iat === "number") {
+      or.push({ name: REVOKE_USER, subject: userRevocationKey(p.userId), at: { gte: new Date((p.iat + 1) * 1000) } });
+    }
   }
   return or.length ? { kind: "auth", OR: or } : null;
 }
@@ -70,7 +78,8 @@ async function isRevoked(payload: Record<string, unknown>): Promise<boolean> {
 /** Committed before the response returns (not in after()), and never behind OPS_TELEMETRY:
  *  enforcement depends on this row. */
 async function writeRevocation(name: string, subject: string, organizationId?: string | null) {
-  await rawDb.opsEvent.create({ data: { kind: "auth", name, ok: true, subject, organizationId: organizationId ?? null } });
+  // `at` from this server's clock — the same clock that stamped the token's iatMs.
+  await rawDb.opsEvent.create({ data: { kind: "auth", name, ok: true, subject, organizationId: organizationId ?? null, at: new Date() } });
 }
 
 /** Ends every session of a user minted before now: password change, deletion. */

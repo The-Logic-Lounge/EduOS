@@ -11,13 +11,16 @@ const ROLES = {
 
 const PAGES = {
   STUDENT: ["/student", "/student/courses", "/student/attendance", "/student/assessments",
-            "/student/assignments", "/student/passport", "/student/career", "/student/timetable"],
-  INSTRUCTOR: ["/instructor", "/instructor/batches", "/instructor/copilot", "/courses", "/courses/new", "/instructor/timetable"],
+            "/student/assignments", "/student/passport", "/student/career", "/student/timetable",
+            "/student/gaps", "/student/viva", "/student/earn", "/student/certs"],
+  INSTRUCTOR: ["/instructor", "/instructor/batches", "/instructor/copilot", "/courses", "/courses/new", "/instructor/timetable",
+               "/instructor/gaps", "/instructor/peers"],
   MANAGEMENT: ["/management", "/management/students", "/management/students/new",
                "/management/instructors", "/management/instructors/new",
                "/management/batches", "/management/batches/new",
                "/management/courses",
-               "/management/ask", "/management/timetable"],
+               "/management/ask", "/management/timetable",
+               "/management/gaps", "/management/certs", "/management/admissions", "/management/system"],
 };
 
 const APIS = {

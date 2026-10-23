@@ -1,7 +1,8 @@
 # Edu OS
 
 AI-powered operating system for a **training institute**. Alibaba Cloud AI Hackathon 2026
-(Bano Qabil × Alkhidmat, Education track) — grand finale **2026-09-10**.
+(Bano Qabil × Alkhidmat, Education track) — grand finale **2026-10-24**, Islamabad, project **P00733**.
+Finale material: `docs/demo/` (stage script, deck, judge rubric + Q&A, printable answer/entry-test sheets).
 Team: Basim · Shan · Muneeb.
 
 **100% synthetic data.** Bano Qabil is the persona the demo is framed around — no real
@@ -58,6 +59,26 @@ Auth is bcrypt + a signed JWT cookie (`jose`) — no external auth provider.
    extension**: scope it by hand with `currentOrgId()` (see `lib/management.ts skillStats`).
    Routes still own *role and ownership* checks inside one org (instructor ↔ own batches).
 
+## Features built for the finale (2026-10-23)
+- **Gap Finder** (`/instructor/gaps`, `/student/gaps`, `/management/gaps`): qwen3-vl-plus reads a
+  photographed answer sheet → per-question marks (trainer confirms; a server HMAC seal decides
+  "graded by AI") → `AssessmentResponse` → concept gaps + re-teach groups. Invariant:
+  sum(question marks) === `AssessmentResult.score` (checked by `npm run check`).
+- **Proof-of-Skill Viva** (`/student/viva`, public `/verify/[id]`): adaptive qwen-plus viva; pass
+  stamps `StudentSkill.verifiedAt`. Student text reaches Qwen only as JSON data; injection → 0 +
+  provisional. The fallback can never stamp Verified.
+- **First-Earning Copilot** (`/student/earn`), **Peer Circles** (`/instructor/peers`, wa.me Urdu
+  links), **Alibaba Cloud cert pathway** (`/student/certs`, `/management/certs`, ACA GenAI
+  Engineer readiness), **Admissions screening** (`/management/admissions`, MCQs scored by rule).
+- Urdu: `translateToUrdu` (qwen-mt-flash). Qwen-MT ignores its glossary, so callers protect
+  technical terms themselves (see `lib/gaps/core.ts`). Simple list outputs use `chatText` +
+  a line parser, not JSON (`lib/certs/server.ts parsePlan`).
+- Placeholder zeros from late enrolment are never evidence: seed skips them, prod rows are
+  relabelled `source='backfill'`, analytics filters them (`EVIDENCE`).
+- Demo reset between rehearsals: `npx tsx scripts/demo-reset.ts --confirm` (Ali → 47/50, no
+  verified skills, rehearsal vivas archived — never deleted).
+- `prisma/seed.mjs` REFUSES a non-local `DATABASE_URL` unless `SEED_TARGET=production-approved`.
+
 ## Commands
 ```bash
 npm run dev
@@ -81,6 +102,8 @@ Run against a production build (`next build && next start`) on a **scratch DB** 
 `docs/operations/EDUOS_DEPLOYMENT_RUNBOOK.md`):
 `scripts/tenant-isolation.mjs` (cross-tenant + cross-role, attempts writes — scratch only),
 `scripts/ops-check.mjs` (headers, cookie flags, throttle, dashboard access, telemetry),
+`scripts/accounts-check.mjs` (management creates students/teachers in both institutes; they log in — scratch only),
+`scripts/legacy-session-check.mjs` (needs the server's AUTH_SECRET), `scripts/prod-verify.mjs` (read-only, prod-safe),
 `scripts/load-test.mjs` (bounded, read-only).
 `scripts/smoke.mjs` logs in as all three roles, renders every page, and greps the HTML for
 Server Component error digests (a crashed RSC still returns 200). It must PASS against a

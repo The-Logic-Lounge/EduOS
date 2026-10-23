@@ -47,6 +47,11 @@ describe("revocationWhere", () => {
     });
   });
 
+  it("with iatMs, revokes every token issued strictly before the revocation (same second too)", () => {
+    const w = revocationWhere({ jti: "j", userId: "u1", iat: 1_700_000_000, iatMs: 1_700_000_000_250 });
+    expect(w?.OR?.[1]).toEqual({ name: "revoke_user", subject: userRevocationKey("u1"), at: { gt: new Date(1_700_000_000_250) } });
+  });
+
   it("has nothing to check for a token with no jti and no iat", () => {
     expect(revocationWhere({ userId: "u1" })).toBeNull();
     expect(revocationWhere({})).toBeNull();
