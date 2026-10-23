@@ -14,6 +14,7 @@ export const STUDENT_NAV: NavItem[] = [
   { href: "/student/gaps", label: "My Gaps" },
   { href: "/student/viva", label: "Skill Viva" },
   { href: "/student/earn", label: "First Earning" },
+  { href: "/student/certs", label: "Alibaba Cloud Cert" },
   { href: "/student/career", label: "Career Path" },
   { href: "/student/chat", label: "Ask Edu OS" },
 ];
@@ -35,6 +36,7 @@ export const MANAGEMENT_NAV: NavItem[] = [
   { href: "/management/batches", label: "Batches" },
   { href: "/management/courses", label: "Courses" },
   { href: "/management/gaps", label: "Gap Map" },
+  { href: "/management/certs", label: "Cert Pipeline" },
   { href: "/management/ask", label: "Ask Edu OS" },
   { href: "/management/timetable", label: "Timetable" },
 ];

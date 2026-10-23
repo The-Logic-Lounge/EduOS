@@ -96,7 +96,12 @@ const JSON_RULE =
 export function extractJSON(raw: string): string | null {
   const text = raw.replace(/```(?:json)?/gi, "").trim();
   const start = text.indexOf("{");
-  if (start === -1) return null;
+  // Only the FIRST object: falling through to a later "{" can return a valid inner fragment of a
+  // broken answer, which a schema with defaults would accept as a fake success.
+  return start === -1 ? null : balancedFrom(text, start);
+}
+
+function balancedFrom(text: string, start: number): string | null {
   let depth = 0;
   let inStr = false;
   let esc = false;
@@ -143,6 +148,12 @@ export async function chatJSON<T>(args: {
         { role: "user", content: userContent },
       ],
       maxTokens: args.maxTokens,
+      // Qwen JSON mode guarantees a syntactically valid object (an unescaped quote inside a
+      // string otherwise turns a good answer into "no_json"). Text-only calls; the prompt must
+      // mention JSON, which JSON_RULE does. LLM_JSON_MODE=off is the escape hatch.
+      ...(!args.images?.length && process.env.LLM_JSON_MODE !== "off"
+        ? { extraBody: { response_format: { type: "json_object" } } }
+        : {}),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
 
@@ -262,6 +273,25 @@ export async function translateToUrdu(text: string, keepTerms: string[] = []): P
           ...(keepTerms.length ? { terms: keepTerms.map((t) => ({ source: t, target: t })) } : {}),
         },
       },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    const out = (res.content ?? "").trim();
+    return out ? { ok: true, data: out } : { ok: false, reason: "empty_answer" };
+  } catch (e) {
+    return { ok: false, reason: aiErrorCode(e) };
+  }
+}
+
+/** Plain-text completion for outputs that are simple lines (no JSON to break). Never throws. */
+export async function chatText(args: { system: string; user: string; temperature?: number; maxTokens?: number }): Promise<AiResult<string>> {
+  const provider = getProvider();
+  if (!provider) return { ok: false, reason: "ai_disabled" };
+  try {
+    const res = await provider.chat({
+      model: MODEL(),
+      temperature: args.temperature ?? 0.3,
+      messages: [{ role: "system", content: args.system }, { role: "user", content: args.user }],
+      maxTokens: args.maxTokens,
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     const out = (res.content ?? "").trim();
