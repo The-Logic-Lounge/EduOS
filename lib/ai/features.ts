@@ -511,7 +511,14 @@ const ComparisonEntity = z.object({
   detail: z.string().default(""),
 });
 
-const ManagementSchema = z.object({
+/** The prompt lets the model leave unused blocks as null; dropping null keys lets every
+ *  field fall back to its default instead of failing the whole answer (schema_mismatch). */
+const dropNulls = (v: unknown): unknown =>
+  Array.isArray(v) ? v.map(dropNulls)
+  : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).filter(([, x]) => x !== null).map(([k, x]) => [k, dropNulls(x)]))
+  : v;
+
+const ManagementShape = z.object({
   insufficient_data: z.boolean().default(false),
   kind: z.enum(["overview", "ranking", "entity", "comparison", "skill-gaps", "report", "instructor"]).default("overview"),
   answer: z.string().default(""),
@@ -556,7 +563,8 @@ const ManagementSchema = z.object({
     .nullable()
     .default(null),
 });
-export type ManagementIntelligence = z.infer<typeof ManagementSchema>;
+const ManagementSchema = z.preprocess(dropNulls, ManagementShape);
+export type ManagementIntelligence = z.infer<typeof ManagementShape>;
 
 /** Stable cache key — paraphrases of the same question should hit the same cache row. */
 function mgmtCacheKey(q: string | undefined, c: Classification): string {

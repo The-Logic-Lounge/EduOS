@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 
-/** The raw client: no tenant scope, no metrics. Only lib/db.ts, lib/ops.ts and
- *  lib/tenant.ts may import it; everything else uses `db` from lib/db.ts. */
+/** The raw client: no tenant scope, no metrics. Only lib/db.ts, lib/ops.ts, lib/tenant.ts and
+ *  the platform-operator readers (lib/ops-summary.ts, lib/platform-orgs.ts) and auth may import it; everything else uses `db` from lib/db.ts. */
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function getDatabaseUrl() {

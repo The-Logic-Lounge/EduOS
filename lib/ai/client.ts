@@ -1,6 +1,7 @@
 import type { ZodType } from "zod";
 import { createProvider, type ChatMessage, type LLMProvider } from "./providers";
 import { recordEvent } from "../ops";
+import { currentOrgId } from "../tenant";
 
 /**
  * The ONLY place that talks to an LLM.
@@ -37,15 +38,17 @@ export function aiErrorCode(e: unknown): string {
 function instrumented(p: LLMProvider): LLMProvider {
   const timed = async <T>(name: string, run: () => Promise<T>, tokens: (r: T) => number | undefined) => {
     const t0 = performance.now();
+    // Which institute spent the call, for the platform panel. null outside a signed-in request.
+    const organizationId = await currentOrgId().catch(() => null);
     try {
       const r = await run();
-      recordEvent({ kind: "ai", name, ok: true, ms: Math.round(performance.now() - t0), tokens: tokens(r) });
+      recordEvent({ kind: "ai", name, ok: true, ms: Math.round(performance.now() - t0), tokens: tokens(r), organizationId });
       return r;
     } catch (e) {
       const status = (e as { status?: unknown })?.status;
       recordEvent({
         kind: "ai", name, ok: false, ms: Math.round(performance.now() - t0),
-        status: typeof status === "number" ? status : undefined, detail: aiErrorCode(e),
+        status: typeof status === "number" ? status : undefined, detail: aiErrorCode(e), organizationId,
       });
       throw e;
     }

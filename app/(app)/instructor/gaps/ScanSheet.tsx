@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
-import { LOW_CONFIDENCE, allBlank, handDraft, type DraftRow, type SheetQuestion, type StoredRow } from "@/lib/gaps/core";
+import { AUTO_CONFIDENCE, LOW_CONFIDENCE, allBlank, handDraft, type DraftRow, type SheetQuestion, type StoredRow } from "@/lib/gaps/core";
 import { downscale, kb, type Photo } from "@/lib/client-image";
 
 type Props = {
@@ -23,6 +23,25 @@ const REASON: Record<string, string> = {
   rate_limited: "the model is rate-limited",
 };
 
+type StackItem = {
+  file: string;
+  photo: Photo;
+  state: "queued" | "reading" | "saved" | "review" | "done" | "error";
+  note?: string;
+  studentId?: string;
+  score?: string;
+  draft?: { source: "ai" | "fallback"; model: string | null; reason?: string; rows: DraftRow[] };
+};
+
+const WHY: Record<string, string> = {
+  ai_unavailable: "AI unavailable — mark by hand",
+  wrong_exam: "This sheet doesn't look like the selected assessment — check the assessment above",
+  no_roll_match: "Roll number not found on the roster — pick the student",
+  low_confidence: "Some handwriting is uncertain — check the highlighted answers",
+  blank_sheet: "No handwriting found — check the photo",
+  trainer_marked: "Already marked by a trainer — confirm before replacing",
+};
+
 export default function ScanSheet({ assessments, students, stored }: Props) {
   const router = useRouter();
   const [assessmentId, setAssessmentId] = useState(assessments.at(-1)?.id ?? "");
@@ -32,6 +51,9 @@ export default function ScanSheet({ assessments, students, stored }: Props) {
   const [error, setError] = useState("");
   const [review, setReview] = useState<Review | null>(null);
   const [saved, setSaved] = useState<{ score: number; max: number; saved: number } | null>(null);
+  const [mode, setMode] = useState<"one" | "stack">("one");
+  const [stack, setStack] = useState<StackItem[]>([]);
+  const [reviewing, setReviewing] = useState<number | null>(null);
 
   const assessment = assessments.find((a) => a.id === assessmentId);
   const questions = assessment?.questions ?? [];
@@ -41,7 +63,74 @@ export default function ScanSheet({ assessments, students, stored }: Props) {
     return <p className="text-sm text-ink-3">This batch needs at least one assessment and one enrolled student before sheets can be scanned.</p>;
   }
 
-  const reset = () => { setReview(null); setSaved(null); setError(""); };
+  const reset = () => { setReview(null); setSaved(null); setError(""); setReviewing(null); };
+  const patch = (i: number, p: Partial<StackItem>) => setStack((st) => st.map((x, j) => (j === i ? { ...x, ...p } : x)));
+
+  async function onStackFiles(list: FileList | null) {
+    if (!list?.length) return;
+    reset();
+    const files = [...list].slice(0, 40);
+    if (files.some((f) => !/^image\/(jpeg|png|webp)$/.test(f.type))) return setError("Photos must be JPEG, PNG or WebP.");
+    setBusy("resizing");
+    try {
+      const out = await Promise.all(files.map(async (f) => ({ file: f.name, photo: await downscale(f), state: "queued" as const })));
+      setStack(out);
+    } catch {
+      setError("Could not read one of those photos on this device.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  /** One request per sheet, two at a time: each read takes 7–14 s and a function has 60 s. */
+  async function runStack() {
+    setError("");
+    setBusy("reading");
+    const queue = stack.map((x, i) => (x.state === "queued" || x.state === "error" ? i : -1)).filter((i) => i >= 0);
+    let anySaved = false;
+    const worker = async () => {
+      for (let i = queue.shift(); i !== undefined; i = queue.shift()) {
+        patch(i, { state: "reading", note: undefined });
+        try {
+          const res = await fetch("/api/gaps/auto", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ assessmentId, images: [stack[i].photo.dataUrl] }),
+          });
+          const json = await res.json().catch(() => null);
+          if (!res.ok || !json?.success) { patch(i, { state: "error", note: json?.error ?? `HTTP ${res.status}` }); continue; }
+          const d = json.data;
+          if (d.status === "saved") {
+            anySaved = true;
+            patch(i, { state: "saved", studentId: d.student.id, score: `${d.score}/${d.max}`, note: `Read with ≥${Math.round(AUTO_CONFIDENCE * 100)}% confidence on every answer` });
+          } else if (d.reason === "wrong_exam") {
+            // Reviewing against the wrong key would only copy the wrong marks; re-run instead.
+            patch(i, { state: "error", note: `${WHY.wrong_exam}, then run again` });
+          } else {
+            patch(i, {
+              state: "review", studentId: d.student?.id, note: WHY[d.reason] ?? d.reason,
+              draft: { source: d.source, model: d.model, rows: d.source === "ai" ? d.rows : handDraft(questions) },
+            });
+          }
+        } catch {
+          patch(i, { state: "error", note: "Network error — run again to retry this sheet" });
+        }
+      }
+    };
+    await Promise.all([worker(), worker()]);
+    setBusy("");
+    if (anySaved) router.refresh();
+  }
+
+  function reviewItem(i: number) {
+    const it = stack[i];
+    if (!it.draft || !it.studentId) return;
+    setStudentId(it.studentId);
+    setReviewing(i);
+    setSaved(null);
+    setError("");
+    open(it.draft.source, it.draft.source === "ai" ? it.draft.rows : handDraft(questions, stored[`${assessmentId}:${it.studentId}`]), it.draft.model, it.draft.reason);
+  }
 
   async function onFiles(list: FileList | null) {
     if (!list?.length) return;
@@ -107,7 +196,10 @@ export default function ScanSheet({ assessments, students, stored }: Props) {
       if (!res.ok || !json?.success) return setError(json?.error ?? `Could not save (${res.status}).`);
       setSaved(json.data);
       setReview(null);
-      setPhotos([]);
+      if (reviewing !== null) {
+        patch(reviewing, { state: "done", score: `${json.data.score}/${json.data.max}`, note: "Reviewed and saved" });
+        setReviewing(null);
+      } else setPhotos([]);
       router.refresh(); // the re-teach groups above now include this sheet
     } catch {
       setError("Network error — nothing was saved. Try again.");
@@ -123,8 +215,23 @@ export default function ScanSheet({ assessments, students, stored }: Props) {
 
   return (
     <div className="space-y-6">
+      {!review && (
+        <div role="tablist" aria-label="Scan mode" className="inline-flex border border-hairline-2 rounded-sm p-0.5">
+          {([["one", "One sheet"], ["stack", "Auto-mark a stack"]] as const).map(([m, label]) => (
+            <button
+              key={m}
+              role="tab"
+              type="button"
+              aria-selected={mode === m}
+              onClick={() => { setMode(m); reset(); }}
+              className={`h-8 rounded-xs px-3 text-sm ${mode === m ? "bg-ink text-paper" : "text-ink-2 hover:text-accent"}`}
+            >{label}</button>
+          ))}
+        </div>
+      )}
+
       {/* 1 — whose sheet */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className={`grid gap-4 ${mode === "one" || review ? "sm:grid-cols-2" : ""}`}>
         <label className="block">
           <span className="stat">Assessment</span>
           <select
@@ -137,7 +244,7 @@ export default function ScanSheet({ assessments, students, stored }: Props) {
             {assessments.map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}
           </select>
         </label>
-        <label className="block">
+        {(mode === "one" || review) && <label className="block">
           <span className="stat">Student</span>
           <select
             name="studentId"
@@ -148,10 +255,81 @@ export default function ScanSheet({ assessments, students, stored }: Props) {
           >
             {students.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.rollNo}</option>)}
           </select>
-        </label>
+        </label>}
       </div>
 
-      {saved && (
+      {/* stack mode — one photo per student, identified by the roll number on the sheet */}
+      {mode === "stack" && !review && (
+        <div>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className={`inline-flex h-10 cursor-pointer items-center gap-2 border border-dashed border-hairline-2 rounded-sm px-4 text-sm text-ink hover:border-accent hover:text-accent ${busy ? "pointer-events-none opacity-45" : ""}`}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden><path d="M4 8h3l2-3h6l2 3h3v11H4z M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" stroke="currentColor" strokeWidth="1.5" /></svg>
+              {stack.length ? "Choose a different stack" : "Choose sheet photos"}
+              <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="sr-only" onChange={(e) => { onStackFiles(e.target.files); e.target.value = ""; }} />
+            </label>
+            <span className="text-xs text-ink-3">One photo per student, up to 40 · the roll number on each sheet says whose it is</span>
+          </div>
+          <p className="mt-3 max-w-2xl text-xs text-ink-3">
+            A sheet is saved without review only when the roll number matches this batch and every answer is read with at least{" "}
+            <span className="mono text-ink-2">{Math.round(AUTO_CONFIDENCE * 100)}%</span> confidence. Everything else waits for you below.
+            A sheet a trainer already marked is never overwritten automatically.
+          </p>
+
+          {stack.length > 0 && (
+            <>
+              <ol className="mt-5 divide-y divide-hairline border-y border-hairline">
+                {stack.map((it, i) => {
+                  const who = students.find((s) => s.id === it.studentId);
+                  return (
+                    <li key={i} className="flex flex-wrap items-center gap-3 py-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={it.photo.dataUrl} alt="" className="h-12 w-9 border border-hairline-2 rounded-xs object-cover" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm text-ink">{who ? <>{who.name} <span className="mono text-ink-3">{who.rollNo}</span></> : <span className="mono text-ink-3">{it.file}</span>}</p>
+                        {it.note && <p className="text-xs text-ink-3">{it.note}</p>}
+                      </div>
+                      {it.score && <span className="mono text-sm text-ink">{it.score}</span>}
+                      {it.state === "queued" && <Badge variant="neutral">Queued</Badge>}
+                      {it.state === "reading" && <Badge variant="neutral">Reading…</Badge>}
+                      {it.state === "saved" && <Badge variant="success">Auto-marked</Badge>}
+                      {it.state === "done" && <Badge variant="success">Saved</Badge>}
+                      {it.state === "error" && <Badge variant="danger">Failed</Badge>}
+                      {it.state === "review" && (
+                        <span className="flex items-center gap-2">
+                          {!it.studentId || it.note === WHY.no_roll_match ? (
+                            <select
+                              aria-label={`Student for ${it.file}`}
+                              value={it.studentId ?? ""}
+                              onChange={(e) => patch(i, { studentId: e.target.value || undefined })}
+                              className="h-8 max-w-[12rem] border border-hairline-2 bg-surface rounded-sm px-2 text-xs text-ink"
+                            >
+                              <option value="">Whose sheet?</option>
+                              {students.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.rollNo}</option>)}
+                            </select>
+                          ) : null}
+                          <Button variant="secondary" onClick={() => reviewItem(i)} disabled={!it.studentId || !!busy}>Review</Button>
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <Button onClick={runStack} disabled={!!busy || !questions.length || !stack.some((x) => x.state === "queued" || x.state === "error")}>
+                  {busy === "reading" ? "Marking…" : busy === "resizing" ? "Resizing…" : `Auto-mark ${stack.filter((x) => x.state === "queued" || x.state === "error").length} sheets`}
+                </Button>
+                <p className="text-xs text-ink-3" aria-live="polite">
+                  <span className="mono text-ink-2">{stack.filter((x) => x.state === "saved").length}</span> auto-marked ·{" "}
+                  <span className="mono text-ink-2">{stack.filter((x) => x.state === "review").length}</span> waiting for you ·{" "}
+                  <span className="mono text-ink-2">{stack.filter((x) => x.state === "done").length}</span> reviewed
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {saved && mode === "one" && (
         <p role="status" className="border-l-2 border-success bg-success-soft px-4 py-3 text-sm text-ink">
           Saved {saved.saved} answers for {student?.name}. Score <span className="mono">{saved.score}/{saved.max}</span> — skills re-derived and the
           re-teach groups above are updated.
@@ -159,7 +337,7 @@ export default function ScanSheet({ assessments, students, stored }: Props) {
       )}
 
       {/* 2 — photos */}
-      {!review && (
+      {!review && mode === "one" && (
         <div>
           <div className="flex flex-wrap items-center gap-3">
             <label className={`inline-flex h-10 cursor-pointer items-center gap-2 border border-dashed border-hairline-2 rounded-sm px-4 text-sm text-ink hover:border-accent hover:text-accent ${photos.length >= 4 ? "pointer-events-none opacity-45" : ""}`}>

@@ -7,8 +7,9 @@ import { currentOrgId } from "@/lib/tenant";
 import { AuthError } from "@/lib/api";
 import type { SessionUser } from "@/lib/auth";
 import { MODEL, VISION_MODEL, TRANSLATE_MODEL, chatJSON, translateToUrdu } from "@/lib/ai/client";
+import { recomputeStudentSkills } from "@/lib/analytics";
 import {
-  ScanAiSchema, clampDraft, handDraft, fallbackPractice, normaliseQuestions, shieldTerms, unshieldTerms,
+  ScanAiSchema, autoDecision, clampDraft, handDraft, matchRoll, resultScore, fallbackPractice, normaliseQuestions, shieldTerms, unshieldTerms,
   type DraftRow, type PracticePack, type SheetQuestion,
 } from "./core";
 
@@ -81,20 +82,95 @@ export function sealIntact(r: SealFields & { seal?: string }): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export async function readSheet(questions: SheetQuestion[], images: string[]): Promise<ScanDraft> {
+const IDENTIFY = `
+Also read the header of the sheet: add "rollNo" (exactly as written, "" if blank or unreadable)
+and "studentName" (as written, "" if blank) at the top level of the JSON.
+Add "sameExam": true only if the questions printed on the sheet are the questions in the marking
+key; false if the sheet is a different exam or test (then still return answers as best you can).`;
+
+export async function readSheet(questions: SheetQuestion[], images: string[], identify = false): Promise<ScanDraft & { rollNo?: string; studentName?: string; sameExam?: boolean }> {
   if (questions.length === 0) return { source: "fallback", model: null, reason: "no_questions", rows: [] };
   const key = questions.map((q) => ({ questionId: q.id, question: q.q, answerKey: q.a, max: q.marks, concept: q.concept }));
   const res = await chatJSON({
-    system: SCAN_SYSTEM,
+    system: identify ? SCAN_SYSTEM + IDENTIFY : SCAN_SYSTEM,
     user: `MARKING KEY JSON:\n${JSON.stringify(key)}\n\nThe ${images.length} photo(s) above are the student's sheet, in page order.`,
-    schema: ScanAiSchema,
+    schema: identify ? ScanAiSchema.extend({ rollNo: z.coerce.string().catch(""), studentName: z.coerce.string().catch(""), sameExam: z.boolean().catch(false) }) : ScanAiSchema,
     model: VISION_MODEL(),
     images,
     temperature: 0,
     maxTokens: 2500,
   });
   if (!res.ok) return { source: "fallback", model: null, reason: res.reason, rows: handDraft(questions) };
-  return { source: "ai", model: VISION_MODEL(), rows: clampDraft(res.data, questions).map(sealRow) };
+  const who = res.data as { rollNo?: string; studentName?: string; sameExam?: boolean };
+  return {
+    source: "ai", model: VISION_MODEL(), rows: clampDraft(res.data, questions).map(sealRow),
+    ...(identify ? { rollNo: (who.rollNo ?? "").slice(0, 40), studentName: (who.studentName ?? "").slice(0, 80), sameExam: who.sameExam === true } : {}),
+  };
+}
+
+/** Writes one reviewed (or auto-accepted) marking. One transaction writes every
+ *  AssessmentResponse (source "scan") AND the AssessmentResult, so sum(marks) === score holds;
+ *  then the student's skills are re-derived. Rows whose seal still verifies are recorded as
+ *  AI-graded, every other row as trainer-graded. */
+export async function saveMarking(
+  assessmentId: string, studentId: string, questions: SheetQuestion[],
+  rows: { questionId: string; answerText: string; marks: number; feedback: string; confidence: number | null; seal?: string }[],
+) {
+  const byId = new Map(questions.map((q) => [q.id, q]));
+  const others = await db.assessmentResponse.findMany({
+    where: { assessmentId, studentId, questionId: { notIn: rows.map((r) => r.questionId) } },
+    select: { marks: true },
+  });
+  const score = resultScore(rows, others);
+  await db.$transaction([
+    ...rows.map((r) => {
+      const q = byId.get(r.questionId)!;
+      const ai = sealIntact(r);
+      const data = {
+        answer: r.answerText, marks: r.marks, maxMarks: q.marks, concept: q.concept, skillId: q.skillId,
+        feedback: r.feedback || null, source: "scan", gradedBy: ai ? "ai" : "trainer", confidence: ai ? r.confidence : null,
+      };
+      return db.assessmentResponse.upsert({
+        where: { assessmentId_studentId_questionId: { assessmentId, studentId, questionId: r.questionId } },
+        create: { assessmentId, studentId, questionId: r.questionId, ...data },
+        update: data,
+      });
+    }),
+    db.assessmentResult.upsert({
+      where: { assessmentId_studentId: { assessmentId, studentId } },
+      create: { assessmentId, studentId, score },
+      update: { score },
+    }),
+  ]);
+  await recomputeStudentSkills(studentId);
+  return { saved: rows.length, score, max: questions.reduce((t, q) => t + q.marks, 0) };
+}
+
+/** Auto-mark one sheet from a stack: read it, identify the student by roll number, and save
+ *  it unattended only when autoDecision() allows; otherwise hand the draft back for review. */
+export async function autoMark(user: SessionUser, assessmentId: string, images: string[]) {
+  const assessment = await db.assessment.findUnique({ where: { id: assessmentId }, select: { id: true, batchId: true, questions: true } });
+  if (!assessment) throw new AuthError("Assessment not found", 404);
+  await gapBatch(user, assessment.batchId);
+  const questions = normaliseQuestions(assessment.questions);
+  if (questions.length === 0) throw new AuthError("This assessment has no question key to mark against", 422);
+  const roster = (await db.enrollment.findMany({
+    where: { batchId: assessment.batchId },
+    select: { student: { select: { id: true, rollNo: true, user: { select: { name: true } } } } },
+  })).map((e) => ({ id: e.student.id, rollNo: e.student.rollNo, name: e.student.user.name }));
+
+  const draft = await readSheet(questions, images, true);
+  const student = draft.source === "ai" ? matchRoll(draft.rollNo ?? "", roster) : null;
+  const trainerMarked = student
+    ? (await db.assessmentResponse.count({ where: { assessmentId, studentId: student.id, gradedBy: "trainer" } })) > 0
+    : false;
+  const decision = autoDecision(draft.rows, { ai: draft.source === "ai", matched: !!student, trainerMarked, sameExam: draft.sameExam === true });
+  const read = { rollNo: draft.rollNo ?? "", studentName: draft.studentName ?? "" };
+  if (decision.auto && student) {
+    const saved = await saveMarking(assessmentId, student.id, questions, draft.rows);
+    return { status: "saved" as const, student, read, ...saved, lowest: Math.min(...draft.rows.map((r) => r.confidence ?? 0)) };
+  }
+  return { status: "review" as const, reason: decision.auto ? "no_roll_match" : decision.reason, student, read, source: draft.source, model: draft.model, rows: draft.rows };
 }
 
 // ------------------------------------------------------------------ practice for one gap

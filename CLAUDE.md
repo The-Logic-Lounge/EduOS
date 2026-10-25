@@ -55,7 +55,7 @@ Auth is bcrypt + a signed JWT cookie (`jose`) — no external auth provider.
    `lib/tenant.ts`: every query is filtered to the signed-in user's org (directly on the 6 root
    models, through the parent relation on the rest), creates are stamped, and a foreign key
    into another org is a 404. Import `db` from `lib/db` — never `rawDb` from `lib/db-base`
-   (only `lib/ops*`, `lib/tenant`, `lib/auth`'s throttle use it). **Raw SQL bypasses the
+   (only `lib/ops*`, `lib/tenant`, `lib/platform-orgs`, `lib/auth`'s throttle use it). **Raw SQL bypasses the
    extension**: scope it by hand with `currentOrgId()` (see `lib/management.ts skillStats`).
    Routes still own *role and ownership* checks inside one org (instructor ↔ own batches).
 
@@ -64,6 +64,15 @@ Auth is bcrypt + a signed JWT cookie (`jose`) — no external auth provider.
   photographed answer sheet → per-question marks (trainer confirms; a server HMAC seal decides
   "graded by AI") → `AssessmentResponse` → concept gaps + re-teach groups. Invariant:
   sum(question marks) === `AssessmentResult.score` (checked by `npm run check`).
+- **Auto-mark a stack** (Gap Finder → "Auto-mark a stack", `POST /api/gaps/auto`, one sheet per
+  request): the model also reads roll no + whether the sheet is the selected exam. Saved unattended
+  ONLY via `autoDecision()` (`lib/gaps/core.ts`): AI read, same exam, roll matches the batch, every
+  answer ≥ 0.8 confidence, no trainer marking already there. Everything else → review queue.
+  Confidence is the model's self-report (it says 1.0 a lot) — the same-exam + roll checks are the
+  real guards. Both paths save through `saveMarking()` (`lib/gaps/server.ts`).
+- **Platform Admin** (`/management/platform`, operators only — same `OPS_ADMIN_EMAILS` gate and
+  404 as System Health): system check + every organization with cross-tenant counts
+  (`lib/platform-orgs.ts`, rawDb on purpose). AI OpsEvents now carry `organizationId`.
 - **Proof-of-Skill Viva** (`/student/viva`, public `/verify/[id]`): adaptive qwen-plus viva; pass
   stamps `StudentSkill.verifiedAt`. Student text reaches Qwen only as JSON data; injection → 0 +
   provisional. The fallback can never stamp Verified.

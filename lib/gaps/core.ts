@@ -253,3 +253,43 @@ export function unshieldTerms(text: string, found: string[]): string | null {
   });
   return seen.size === found.length && !/\{\s*\d+\s*\}/.test(out) ? out : null;
 }
+
+// ------------------------------------------------------------------ auto-marking a stack
+
+/** Every row at or above this confidence, and the roll number matched: saved without review. */
+export const AUTO_CONFIDENCE = 0.8;
+
+const rollKey = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+/** The roster entry whose roll number the model read off the sheet. Exact match after
+ *  stripping spaces/dashes ("BQ-24 017" = "BQ24017"); otherwise a unique match on the
+ *  trailing digits, since students often write only "17". Ambiguous -> null, never a guess. */
+export function matchRoll<T extends { rollNo: string }>(read: string, roster: T[]): T | null {
+  const k = rollKey(read);
+  if (!k) return null;
+  const exact = roster.filter((s) => rollKey(s.rollNo) === k);
+  if (exact.length === 1) return exact[0];
+  const last = (s: string) => Number(s.match(/(\d+)\D*$/)?.[1] ?? NaN); // "BQ-24-017" -> 17
+  const n = last(read);
+  if (!Number.isFinite(n)) return null;
+  const tail = roster.filter((s) => last(s.rollNo) === n);
+  return tail.length === 1 ? tail[0] : null;
+}
+
+export type AutoReason = "ai_unavailable" | "wrong_exam" | "no_roll_match" | "low_confidence" | "blank_sheet" | "trainer_marked";
+
+/** Save unattended only when nothing about the sheet needs a human: the AI read it, it is the
+ *  exam that was selected (a confident read against the wrong key is a confident wrong mark),
+ *  the student is identified, no row is uncertain, and no trainer has already marked it. */
+export function autoDecision(
+  rows: DraftRow[],
+  opts: { ai: boolean; matched: boolean; trainerMarked: boolean; sameExam: boolean },
+): { auto: true } | { auto: false; reason: AutoReason } {
+  if (!opts.ai) return { auto: false, reason: "ai_unavailable" };
+  if (!opts.sameExam) return { auto: false, reason: "wrong_exam" };
+  if (!opts.matched) return { auto: false, reason: "no_roll_match" };
+  if (allBlank(rows)) return { auto: false, reason: "blank_sheet" };
+  if (rows.some((r) => r.confidence === null || r.confidence < AUTO_CONFIDENCE)) return { auto: false, reason: "low_confidence" };
+  if (opts.trainerMarked) return { auto: false, reason: "trainer_marked" };
+  return { auto: true };
+}

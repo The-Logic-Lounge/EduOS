@@ -20,7 +20,7 @@ const PAGES = {
                "/management/batches", "/management/batches/new",
                "/management/courses",
                "/management/ask", "/management/timetable",
-               "/management/gaps", "/management/certs", "/management/admissions", "/management/system"],
+               "/management/gaps", "/management/certs", "/management/admissions", "/management/system", "/management/platform"],
 };
 
 const APIS = {

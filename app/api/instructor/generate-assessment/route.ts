@@ -24,11 +24,15 @@ const GeneratedSchema = z.object({
   title: z.string().default(""),
   questions: z
     .array(
-      z.object({
-        q: z.string(),
-        a: z.string().default(""),
-        marks: z.number().int().min(0).default(0),
-      }),
+      // Models often answer with "question"/"answer" keys; accept them rather than fall back.
+      z.preprocess(
+        (v) => (v && typeof v === "object" ? { q: (v as Record<string, unknown>).question, a: (v as Record<string, unknown>).answer, ...v } : v),
+        z.object({
+          q: z.string().min(1),
+          a: z.coerce.string().default(""),
+          marks: z.coerce.number().int().min(0).default(0),
+        }),
+      ),
     )
     .default([]),
   maxScore: z.number().int().min(0).default(0),
@@ -39,7 +43,9 @@ const SYSTEM = `You are an instructor assistant at a free IT training institute 
 Generate assessment questions grounded in the batch's weak topics and the module content.
 Vary question phrasing; avoid boilerplate. Every question must have an answer key.
 Marks per question should reflect difficulty (easy ≈ 2-3, medium ≈ 4-5, hard ≈ 6-8).
-Return maxScore as the sum of all marks. Never fabricate module names that are not in the context.`;
+Return maxScore as the sum of all marks. Never fabricate module names that are not in the context.
+Return JSON exactly in this shape:
+{"title":"...","questions":[{"q":"question text","a":"answer key","marks":4}],"maxScore":40}`;
 
 async function POST_(req: Request) {
   try {
@@ -114,7 +120,8 @@ async function POST_(req: Request) {
       });
     }
 
-    return ok({ source: "ai", data: res.data });
+    // maxScore is arithmetic, not the model's job: always the sum of the marks it gave.
+    return ok({ source: "ai", data: { ...res.data, maxScore: res.data.questions.reduce((t, q) => t + q.marks, 0) } });
   } catch (error) {
     return handleApiError(error);
   }
